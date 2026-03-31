@@ -2,6 +2,7 @@ using Godot;
 using System;
 using System.Collections.Generic;
 using MetaFort.Core.EventBus;
+using MetaFort.Core.EventBus.Events;
 using MetaFort.Core.Spatial;
 using TileData = MetaFort.Core.Spatial.TileData;
 
@@ -10,107 +11,301 @@ namespace MetaFort.Visual
     public partial class TerrainVisualizer2D : Node2D
     {
         [Export]
-        public TileMapLayer TargetTileMap; 
+        public TileMapLayer TargetTileMap;
+        
+        [Export]
+        public bool IgnoreVision = false;
+
+        [Export]
+        public int MaxCachedLayers = 6;
+
+        private class LayerCacheItem
+        {
+            public int ZLevel = -1;
+            public TileMapLayer GroundLayer;
+            public TileMapLayer ObstacleLayer;
+            public TileMapLayer FogLayer;
+            public long LastAccessedTicks;
+        }
+
+        private List<LayerCacheItem> _layerCache = new List<LayerCacheItem>();
 
         private int _currentZLevel = 0;
         private IMapManager _mapManager;
         private IEventBus _eventBus;
+        private IVisionDataSystem _visionData;
 
         private Camera2D _camera;
-        private float _cameraSpeed = 1200f; 
+        private float _cameraSpeed = 1200f;
 
         private readonly Dictionary<TerrainType, int> _terrainCoords = new Dictionary<TerrainType, int>();
+        private readonly Dictionary<TerrainType, Vector2I> _defaultFloorAtlas = new Dictionary<TerrainType, Vector2I>();
         private GameEventHandler<TerrainModifiedEvent> _onTerrainModHandler;
+        private GameEventHandler<VisionUpdatedEvent> _onVisionUpdatedHandler;
 
-        private Vector2I[] _visualCache;
-        private TileMapLayer _shadowLayer;
-        private TileMapLayer _displayLayer;
-        
-        private Rect2I _lastVisibleRect;
-
-        // [优化]: 脏图更新列队，批处理降低 C++ 层 API 调用延迟
-        private Dictionary<int, HashSet<Vector2I>> _dirtyCellsByZ = new Dictionary<int, HashSet<Vector2I>>();
+        private bool _isInitialized = false;
 
         public override void _Ready()
         {
-            _mapManager = GameEntry.Instance.MapManager;
-            _eventBus = GameEntry.Instance.EventBus;
+            if (GameEntry.Instance != null)
+            {
+                Initialize(GameEntry.Instance.MapManager, GameEntry.Instance.EventBus, GameEntry.Instance.VisionData);
+            }
+        }
 
-            if (_mapManager == null || _eventBus == null || TargetTileMap == null) return;
+        public void Initialize(IMapManager mapManager, IEventBus eventBus, IVisionDataSystem visionData)
+        {
+            if (_isInitialized) return;
+
+            _mapManager = mapManager;
+            _eventBus = eventBus;
+            _visionData = visionData;
+
+            if (_mapManager == null || _eventBus == null || _visionData == null) return;
+
+            if (TargetTileMap == null)
+            {
+                GD.PrintErr("[TerrainVisualizer2D] 致命错误：未指定 TargetTileMap！请在编辑器中拖入或新建一个带有设定集的 TileMapLayer 节点到此坑位。");
+                return;
+            }
 
             LoadRenderConfig();
 
-            int capacity = _mapManager.Width * _mapManager.Height * _mapManager.Depth;
-            _visualCache = new Vector2I[capacity];
-            for (int i = 0; i < capacity; i++)
+            TargetTileMap.Visible = false; // 隐藏作为预制件的根节点
+
+            // 1. 初始化 LRU 缓存池
+            for (int i = 0; i < MaxCachedLayers; i++)
             {
-                _visualCache[i] = new Vector2I(-1, -1);
+                var gLayer = (TileMapLayer)TargetTileMap.Duplicate();
+                var oLayer = new TileMapLayer();
+                oLayer.TileSet = TargetTileMap.TileSet;
+                oLayer.ZIndex = 1; // 确保墙壁挡这层上面
+
+                var fLayer = new TileMapLayer();
+                fLayer.TileSet = TargetTileMap.TileSet;
+                fLayer.ZIndex = 2; // 迷雾盖在最上方
+                fLayer.Modulate = new Color(0, 0, 0, 0.65f); // 65% 纯黑迷雾滤镜
+
+                AddChild(gLayer);
+                AddChild(oLayer);
+                AddChild(fLayer);
+
+                gLayer.Visible = false;
+                oLayer.Visible = false;
+                fLayer.Visible = false;
+
+                _layerCache.Add(new LayerCacheItem
+                {
+                    GroundLayer = gLayer,
+                    ObstacleLayer = oLayer,
+                    FogLayer = fLayer
+                });
             }
-
-            _displayLayer = TargetTileMap; 
-            _shadowLayer = new TileMapLayer();
-            _shadowLayer.TileSet = _displayLayer.TileSet;
-            _shadowLayer.Visible = false; 
-
-            BakeAllTerrain();
 
             _camera = new Camera2D();
             _camera.Zoom = new Vector2(0.8f, 0.8f);
-            _camera.Position = new Vector2((_mapManager.Width / 2f) * 32f, (_mapManager.Height / 2f) * 32f); 
+            // 瓦片大小 32f
+            _camera.Position = new Vector2((_mapManager.Width / 2f) * 32f, (_mapManager.Height / 2f) * 32f);
             AddChild(_camera);
-            _camera.MakeCurrent(); 
+            _camera.MakeCurrent();
 
-            _currentZLevel = _mapManager.Depth - 1; 
+            _currentZLevel = 15;
 
             _onTerrainModHandler = OnTerrainModified;
             _eventBus.Subscribe(_onTerrainModHandler);
 
-            ForceRenderViewport();
+            _onVisionUpdatedHandler = OnVisionUpdated;
+            _eventBus.Subscribe(_onVisionUpdatedHandler);
+
+            // 初始化基础地板 Atlas 的映射（针对增量极速 SetCell 绘制）
+            InitDefaultFloorAtlas();
+
+            // 首层触发加载
+            ChangeZLevel(_currentZLevel);
+
+            _isInitialized = true;
         }
 
-        private void BakeAllTerrain()
+        private void InitDefaultFloorAtlas()
         {
-            GD.Print("[Visualizer] Starting Shadow Baking Process...");
-            for (int z = 0; z < _mapManager.Depth; z++)
+            // 根据你的 Godot 瓦片图集 (来源ID为 Source: 1) 提供如下精准映射：
+            _defaultFloorAtlas[TerrainType.Bedrock] = new Vector2I(2, 0); // 黑色
+            _defaultFloorAtlas[TerrainType.Stone] = new Vector2I(1, 0); // 深灰色
+            _defaultFloorAtlas[TerrainType.Dirt] = new Vector2I(0, 0); // 棕色
+            _defaultFloorAtlas[TerrainType.Grass] = new Vector2I(1, 1); // 浅绿色
+            _defaultFloorAtlas[TerrainType.Water] = new Vector2I(0, 2); // 蓝色
+            _defaultFloorAtlas[TerrainType.Iron] = new Vector2I(3, 0); // 
+            _defaultFloorAtlas[TerrainType.Sand] = new Vector2I(0, 1); // 浅米色/沙色
+            _defaultFloorAtlas[TerrainType.Coal] = new Vector2I(1, 2); // 
+        }
+
+        private LayerCacheItem TryGetCachedLayer(int zLevel)
+        {
+            foreach (var item in _layerCache)
             {
-                _shadowLayer.Clear();
-                var cellsByTerrainId = new Dictionary<int, Godot.Collections.Array<Vector2I>>();
+                if (item.ZLevel == zLevel) return item;
+            }
+            return null;
+        }
 
-                for (int x = 0; x < _mapManager.Width; x++)
+        private LayerCacheItem GetOrLoadLayer(int zLevel)
+        {
+            LayerCacheItem target = TryGetCachedLayer(zLevel);
+
+            if (target != null)
+            {
+                target.LastAccessedTicks = DateTime.UtcNow.Ticks;
+                return target;
+            }
+
+            // LRU 淘汰：寻找最久没有被访问过的层
+            target = _layerCache[0];
+            foreach (var item in _layerCache)
+            {
+                if (item.LastAccessedTicks < target.LastAccessedTicks)
                 {
-                    for (int y = 0; y < _mapManager.Height; y++)
-                    {
-                        TileData data = _mapManager.GetTile(x, y, z);
-                        if (data.Type == TerrainType.Air) continue;
+                    target = item;
+                }
+            }
 
-                        if (_terrainCoords.TryGetValue(data.Type, out int terrainId))
-                        {
-                            if (!cellsByTerrainId.ContainsKey(terrainId))
-                                cellsByTerrainId[terrainId] = new Godot.Collections.Array<Vector2I>();
-                            cellsByTerrainId[terrainId].Add(new Vector2I(x, y));
-                        }
+            // 剔除旧数据并重新装载新楼层！
+            target.ZLevel = zLevel;
+            target.LastAccessedTicks = DateTime.UtcNow.Ticks;
+            DrawFloor(zLevel, target.GroundLayer, target.ObstacleLayer, target.FogLayer);
+
+            return target;
+        }
+
+        /// <summary>
+        /// 接收到后端视野数据更新事件时触发 (按需增量渲染)
+        /// </summary>
+        private void OnVisionUpdated(ref VisionUpdatedEvent e)
+        {
+            if (IgnoreVision) return;
+
+            var cachedLayer = TryGetCachedLayer(e.ZLevel);
+            if (cachedLayer == null) return;
+
+            int floorZ = e.ZLevel - 1;
+            var obstacleCoordsByTerrain = new Dictionary<int, Godot.Collections.Array<Vector2I>>();
+
+            var coordsToDraw = new HashSet<Vector2I>(e.NewlyVisibleCoords);
+            coordsToDraw.UnionWith(e.NewlyExploredCoords);
+
+            foreach (var pos in coordsToDraw)
+            {
+                // 1. 在 groundLayer 印上地砖 (使用极速 SetCell)
+                if (floorZ >= 0 && _mapManager.IsWithinBounds(pos.X, pos.Y, floorZ))
+                {
+                    TileData floorData = _mapManager.GetTile(pos.X, pos.Y, floorZ);
+                    if (floorData.Type != TerrainType.Air && _defaultFloorAtlas.TryGetValue(floorData.Type, out Vector2I atlasCoord))
+                    {
+                        cachedLayer.GroundLayer.SetCell(pos, 0, atlasCoord);
                     }
                 }
 
-                foreach (var kvp in cellsByTerrainId)
+                // 2. 收集 obstacleLayer 当层的墙壁
+                if (_mapManager.IsWithinBounds(pos.X, pos.Y, e.ZLevel))
                 {
-                    _shadowLayer.SetCellsTerrainConnect(kvp.Value, 0, kvp.Key, false);
-                }
-
-                for (int x = 0; x < _mapManager.Width; x++)
-                {
-                    for (int y = 0; y < _mapManager.Height; y++)
+                    TileData obstacleData = _mapManager.GetTile(pos.X, pos.Y, e.ZLevel);
+                    if (obstacleData.Type != TerrainType.Air && _terrainCoords.TryGetValue(obstacleData.Type, out int tId))
                     {
-                        TileData data = _mapManager.GetTile(x, y, z);
-                        int flatIndex = _mapManager.GetFlatIndex(x, y, z);
-                        
-                        if (data.Type == TerrainType.Air) _visualCache[flatIndex] = new Vector2I(-1, -1);
-                        else _visualCache[flatIndex] = _shadowLayer.GetCellAtlasCoords(new Vector2I(x, y));
+                        if (!obstacleCoordsByTerrain.ContainsKey(tId))
+                            obstacleCoordsByTerrain[tId] = new Godot.Collections.Array<Vector2I>();
+                        obstacleCoordsByTerrain[tId].Add(pos);
                     }
                 }
             }
-            _shadowLayer.Clear(); 
-            GD.Print("[Visualizer] Shadow Baking Complete.");
+
+            foreach (var kvp in obstacleCoordsByTerrain)
+            {
+                cachedLayer.ObstacleLayer.SetCellsTerrainConnect(kvp.Value, 0, kvp.Key, true);
+            }
+
+            // 处理迷雾的动态遮罩
+            Vector2I fogAtlasCoord = new Vector2I(2, 0); // 使用黑色作为迷雾替代贴图
+            foreach(var pos in e.NewlyVisibleCoords)
+            {
+                cachedLayer.FogLayer.EraseCell(pos);
+            }
+            foreach(var pos in e.NewlyHiddenCoords)
+            {
+                cachedLayer.FogLayer.SetCell(pos, 0, fogAtlasCoord);
+            }
+        }
+
+        /// <summary>
+        /// 当 LRU 淘汰重新分配新楼层时的全屏重绘（完全兼容 IgnoreVision 全视模式）
+        /// </summary>
+        private void DrawFloor(int zLevel, TileMapLayer groundLayer, TileMapLayer obstacleLayer, TileMapLayer fogLayer)
+        {
+            groundLayer.Clear();
+            obstacleLayer.Clear();
+            fogLayer.Clear();
+
+            IEnumerable<Vector2I> tilesToRender;
+
+            if (IgnoreVision)
+            {
+                // 调试沙盒模式：画出当前整层的所有格子
+                var fullMap = new List<Vector2I>();
+                for (int x = 0; x < _mapManager.Width; x++)
+                    for (int y = 0; y < _mapManager.Height; y++)
+                        fullMap.Add(new Vector2I(x, y));
+                tilesToRender = fullMap;
+            }
+            else
+            {
+                // 游戏模式：仅画出被探索过的格子
+                tilesToRender = _visionData.GetExploredTiles(zLevel);
+            }
+
+            int floorZ = zLevel - 1;
+            var obstacleCoordsByTerrain = new Dictionary<int, Godot.Collections.Array<Vector2I>>();
+
+            foreach (var pos in tilesToRender)
+            {
+                // 画 Z-1 的极速地板层
+                if (floorZ >= 0 && _mapManager.IsWithinBounds(pos.X, pos.Y, floorZ))
+                {
+                    TileData floorData = _mapManager.GetTile(pos.X, pos.Y, floorZ);
+                    if (floorData.Type != TerrainType.Air && _defaultFloorAtlas.TryGetValue(floorData.Type, out Vector2I atlasCoord))
+                    {
+                        groundLayer.SetCell(pos, 0, atlasCoord);
+                    }
+                }
+
+                // 收集 Z 的墙壁
+                if (_mapManager.IsWithinBounds(pos.X, pos.Y, zLevel))
+                {
+                    TileData obstacleData = _mapManager.GetTile(pos.X, pos.Y, zLevel);
+                    if (obstacleData.Type != TerrainType.Air && _terrainCoords.TryGetValue(obstacleData.Type, out int tId))
+                    {
+                        if (!obstacleCoordsByTerrain.ContainsKey(tId))
+                            obstacleCoordsByTerrain[tId] = new Godot.Collections.Array<Vector2I>();
+                        obstacleCoordsByTerrain[tId].Add(pos);
+                    }
+                }
+            }
+
+            // 统一渲染 Z 层的固体墙壁，跑一次 TerrainConnect 优化性能
+            foreach (var kvp in obstacleCoordsByTerrain)
+            {
+                obstacleLayer.SetCellsTerrainConnect(kvp.Value, 0, kvp.Key, true);
+            }
+
+            // 全局盖上一层迷雾
+            if (!IgnoreVision)
+            {
+                Vector2I fogAtlasCoord = new Vector2I(2, 0); 
+                foreach (var pos in tilesToRender)
+                {
+                    if (!_visionData.IsCurrentlyVisible(pos.X, pos.Y, zLevel))
+                    {
+                        fogLayer.SetCell(pos, 0, fogAtlasCoord);
+                    }
+                }
+            }
         }
 
         public override void _Process(double delta)
@@ -127,147 +322,55 @@ namespace MetaFort.Visual
             {
                 _camera.Position += moveDir.Normalized() * _cameraSpeed * (float)delta;
             }
-
-            // [优化]: 聚合消费处理瀑布造成的批量水流脏图更新
-            if (_dirtyCellsByZ.Count > 0)
-            {
-                ProcessDirtyCells();
-            }
-
-            Rect2I currentRect = GetVisibleGridRect();
-            if (currentRect != _lastVisibleRect)
-            {
-                _lastVisibleRect = currentRect;
-                RenderViewport(currentRect);
-            }
         }
 
         private void OnTerrainModified(ref TerrainModifiedEvent e)
         {
-            int z = e.Position.Z;
-            if (!_dirtyCellsByZ.ContainsKey(z)) _dirtyCellsByZ[z] = new HashSet<Vector2I>();
-            _dirtyCellsByZ[z].Add(new Vector2I(e.Position.X, e.Position.Y));
-        }
+            if (e.OldType == e.NewType) return; // 拦截同质化物理重写（如水体更新流速引起的冗余渲染调用），极大提升帧率
 
-        private void ProcessDirtyCells()
-        {
-            foreach (var kvp in _dirtyCellsByZ)
+            // 物理防抖判断在方法头部已执行。
+            int modZ = e.Position.Z;
+            Vector2I pos = new Vector2I(e.Position.X, e.Position.Y);
+
+            // 获取被影响的缓存画板：
+            // 若某画板代表 modZ 层，则其被修改的是“墙体障碍物”
+            var layerAsObstacle = TryGetCachedLayer(modZ);
+            
+            // 若某画板代表 modZ+1 层，则其被修改的是脚下的“地面”（Z-1就是修改层）
+            var layerAsGround = TryGetCachedLayer(modZ + 1);
+
+            // 【情况 B】：挖当层面前的墙 (Z)
+            if (layerAsObstacle != null)
             {
-                int zLevel = kvp.Key;
-                HashSet<Vector2I> dirtySet = kvp.Value;
-                if (dirtySet.Count == 0) continue;
-
-                var contextSet = new Dictionary<int, HashSet<Vector2I>>();
-                var coreCells = new HashSet<Vector2I>();
-
-                foreach (var pos in dirtySet)
+                // 判断视野是否被允许更新：开启超级沙盒，或是这层在这格被探索过
+                if (IgnoreVision || _visionData.IsExplored(pos.X, pos.Y, layerAsObstacle.ZLevel))
                 {
-                    for (int dx = -1; dx <= 1; dx++)
-                        for (int dy = -1; dy <= 1; dy++)
-                            coreCells.Add(new Vector2I(pos.X + dx, pos.Y + dy));
-
-                    for (int dx = -2; dx <= 2; dx++)
+                    if (e.NewType == TerrainType.Air)
                     {
-                        for (int dy = -2; dy <= 2; dy++)
-                        {
-                            int nx = pos.X + dx;
-                            int ny = pos.Y + dy;
-                            if (_mapManager.IsWithinBounds(nx, ny, zLevel))
-                            {
-                                TileData data = _mapManager.GetTile(nx, ny, zLevel);
-                                if (data.Type != TerrainType.Air && _terrainCoords.TryGetValue(data.Type, out int tId))
-                                {
-                                    if (!contextSet.ContainsKey(tId)) contextSet[tId] = new HashSet<Vector2I>();
-                                    contextSet[tId].Add(new Vector2I(nx, ny));
-                                }
-                            }
-                        }
+                        var singleCoordArr = new Godot.Collections.Array<Vector2I> { pos };
+                        layerAsObstacle.ObstacleLayer.SetCellsTerrainConnect(singleCoordArr, 0, -1, true);
                     }
-                }
-
-                _shadowLayer.Clear();
-                foreach (var cKvp in contextSet)
-                {
-                    var godotArr = new Godot.Collections.Array<Vector2I>(cKvp.Value);
-                    _shadowLayer.SetCellsTerrainConnect(godotArr, 0, cKvp.Key, false);
-                }
-
-                foreach (var pos in coreCells)
-                {
-                    if (!_mapManager.IsWithinBounds(pos.X, pos.Y, zLevel)) continue;
-                    
-                    TileData data = _mapManager.GetTile(pos.X, pos.Y, zLevel);
-                    int flatIndex = _mapManager.GetFlatIndex(pos.X, pos.Y, zLevel);
-
-                    Vector2I newAtlas = new Vector2I(-1, -1);
-                    if (data.Type != TerrainType.Air)
+                    else if (_terrainCoords.TryGetValue(e.NewType, out int tId))
                     {
-                        newAtlas = _shadowLayer.GetCellAtlasCoords(pos);
-                    }
-                    
-                    _visualCache[flatIndex] = newAtlas;
-
-                    if (zLevel == _currentZLevel && _lastVisibleRect.HasPoint(pos))
-                    {
-                        if (newAtlas.X == -1) _displayLayer.EraseCell(pos);
-                        else _displayLayer.SetCell(pos, 0, newAtlas);
+                        var singleCoordArr = new Godot.Collections.Array<Vector2I> { pos };
+                        layerAsObstacle.ObstacleLayer.SetCellsTerrainConnect(singleCoordArr, 0, tId, true);
                     }
                 }
             }
-            _dirtyCellsByZ.Clear();
-            _shadowLayer.Clear();
-        }
 
-        private Rect2I GetVisibleGridRect()
-        {
-            if (_camera == null || _displayLayer == null || _displayLayer.TileSet == null) return new Rect2I();
-
-            Vector2 tileSize = (Vector2)_displayLayer.TileSet.TileSize;
-            Vector2 viewportSize = GetViewportRect().Size;
-            Vector2 visibleWorldSize = viewportSize / _camera.Zoom;
-
-            Vector2 topLeftWorld = _camera.Position - (visibleWorldSize / 2f);
-            Vector2 botRightWorld = _camera.Position + (visibleWorldSize / 2f);
-
-            int minX = Mathf.FloorToInt(topLeftWorld.X / tileSize.X);
-            int minY = Mathf.FloorToInt(topLeftWorld.Y / tileSize.Y);
-            int maxX = Mathf.CeilToInt(botRightWorld.X / tileSize.X);
-            int maxY = Mathf.CeilToInt(botRightWorld.Y / tileSize.Y);
-
-            minX -= 2; minY -= 2;
-            maxX += 2; maxY += 2;
-
-            minX = Mathf.Clamp(minX, 0, _mapManager.Width - 1);
-            minY = Mathf.Clamp(minY, 0, _mapManager.Height - 1);
-            maxX = Mathf.Clamp(maxX, 0, _mapManager.Width - 1);
-            maxY = Mathf.Clamp(maxY, 0, _mapManager.Height - 1);
-
-            return new Rect2I(minX, minY, maxX - minX + 1, maxY - minY + 1);
-        }
-
-        private void ForceRenderViewport()
-        {
-            _lastVisibleRect = GetVisibleGridRect();
-            RenderViewport(_lastVisibleRect);
-        }
-
-        private void RenderViewport(Rect2I rect)
-        {
-            _displayLayer.Clear();
-
-            int endX = rect.Position.X + rect.Size.X;
-            int endY = rect.Position.Y + rect.Size.Y;
-
-            for (int x = rect.Position.X; x < endX; x++)
+            // 【情况 A】：挖当前层脚下的地 (Z - 1)
+            if (layerAsGround != null)
             {
-                for (int y = rect.Position.Y; y < endY; y++)
+                // 视野逻辑判定同理
+                if (IgnoreVision || _visionData.IsExplored(pos.X, pos.Y, layerAsGround.ZLevel))
                 {
-                    int flatIndex = _mapManager.GetFlatIndex(x, y, _currentZLevel);
-                    Vector2I cachedAtlas = _visualCache[flatIndex];
-
-                    if (cachedAtlas.X != -1)
+                    if (e.NewType == TerrainType.Air)
                     {
-                        _displayLayer.SetCell(new Vector2I(x, y), 0, cachedAtlas);
+                        layerAsGround.GroundLayer.EraseCell(pos);
+                    }
+                    else if (_defaultFloorAtlas.TryGetValue(e.NewType, out Vector2I atlasCoord))
+                    {
+                        layerAsGround.GroundLayer.SetCell(pos, 0, atlasCoord);
                     }
                 }
             }
@@ -276,24 +379,64 @@ namespace MetaFort.Visual
         private void ChangeZLevel(int newZ)
         {
             newZ = Mathf.Clamp(newZ, 0, _mapManager.Depth - 1);
-            if (newZ != _currentZLevel)
+            if (newZ != _currentZLevel || _currentZLevel == -1)
             {
+                // 先安全隐藏当前旧楼层（如果有常驻则不影响，仅仅设不可见）
+                var oldLayer = TryGetCachedLayer(_currentZLevel);
+                if (oldLayer != null)
+                {
+                    oldLayer.GroundLayer.Visible = false;
+                    oldLayer.ObstacleLayer.Visible = false;
+                }
+
                 _currentZLevel = newZ;
-                ForceRenderViewport(); 
+                
+                // 从 LRU 获取或瞬间冷加载并显示目标层！
+                var currentItem = GetOrLoadLayer(_currentZLevel);
+                currentItem.GroundLayer.Visible = true;
+                currentItem.ObstacleLayer.Visible = true;
+            }
+        }
+
+        public override void _UnhandledInput(InputEvent @event)
+        {
+            if (!_isInitialized) return;
+
+            if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
+            {
+                if (keyEvent.Keycode == Key.Pageup) ChangeZLevel(_currentZLevel + 1);
+                else if (keyEvent.Keycode == Key.Pagedown) ChangeZLevel(_currentZLevel - 1);
+            }
+
+            if (@event is InputEventMouseButton mouseBtn && mouseBtn.Pressed)
+            {
+                if (mouseBtn.ButtonIndex == MouseButton.WheelUp)
+                {
+                    if (_camera != null) _camera.Zoom *= 1.1f;
+                    return;
+                }
+                else if (mouseBtn.ButtonIndex == MouseButton.WheelDown)
+                {
+                    if (_camera != null) _camera.Zoom *= 0.9f;
+                    return;
+                }
             }
         }
 
         public override void _ExitTree()
         {
-            if (_eventBus != null && _onTerrainModHandler != null)
-                _eventBus.Unsubscribe(_onTerrainModHandler);
+            if (_eventBus != null)
+            {
+                if (_onTerrainModHandler != null) _eventBus.Unsubscribe(_onTerrainModHandler);
+                if (_onVisionUpdatedHandler != null) _eventBus.Unsubscribe(_onVisionUpdatedHandler);
+            }
         }
 
         private void LoadRenderConfig()
         {
             string configPath = "res://assets/config/terrain_config.json";
             if (!Godot.FileAccess.FileExists(configPath)) return;
-            
+
             try
             {
                 string jsonText = Godot.FileAccess.GetFileAsString(configPath);
@@ -313,53 +456,6 @@ namespace MetaFort.Visual
             catch (System.Exception ex)
             {
                 GD.PrintErr($"[Visualizer] Parse failed: {ex.Message}");
-            }
-        }
-
-        public override void _UnhandledInput(InputEvent @event)
-        {
-            if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
-            {
-                if (keyEvent.Keycode == Key.Pageup) ChangeZLevel(_currentZLevel + 1);
-                else if (keyEvent.Keycode == Key.Pagedown) ChangeZLevel(_currentZLevel - 1);
-            }
-
-            if (@event is InputEventMouseButton mouseBtn && mouseBtn.Pressed)
-            {
-                if (mouseBtn.ButtonIndex == MouseButton.WheelUp)
-                {
-                    if (_camera != null) _camera.Zoom *= 1.1f;
-                    ForceRenderViewport(); 
-                    return; 
-                }
-                else if (mouseBtn.ButtonIndex == MouseButton.WheelDown)
-                {
-                    if (_camera != null) _camera.Zoom *= 0.9f;
-                    ForceRenderViewport();
-                    return; 
-                }
-
-                Vector2 globalMousePos = GetGlobalMousePosition();
-                Vector2I mapPos = TargetTileMap.LocalToMap(TargetTileMap.ToLocal(globalMousePos));
-
-                TerrainType targetType = TerrainType.Air;
-                bool actionValid = false;
-
-                if (mouseBtn.ButtonIndex == MouseButton.Left)
-                {
-                    targetType = TerrainType.Air;
-                    actionValid = true;
-                }
-                else if (mouseBtn.ButtonIndex == MouseButton.Right)
-                {
-                    targetType = TerrainType.Stone;
-                    actionValid = true;
-                }
-
-                if (actionValid)
-                {
-                    _mapManager.ReplaceTile(mapPos.X, mapPos.Y, _currentZLevel, targetType);
-                }
             }
         }
     }

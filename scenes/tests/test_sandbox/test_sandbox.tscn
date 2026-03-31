@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://bfkiu44d4q3xi"]
+
+[ext_resource type="Script" uid="uid://c5f0e0l0244s8" path="res://Scripts/GameEntry.cs" id="1_ewn84"]
+[ext_resource type="PackedScene" uid="uid://da13vdybe33pk" path="res://scenes/components/terrain_visualizer.tscn" id="1_pqsad"]
+
+[node name="TestSandbox" type="Node2D" unique_id=515997206]
+script = ExtResource("1_ewn84")
+
+[node name="TerrainVisualizer2D" parent="." unique_id=712019728 instance=ExtResource("1_pqsad")]
+IgnoreVision = true

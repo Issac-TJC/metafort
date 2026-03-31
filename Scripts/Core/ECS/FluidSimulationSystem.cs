@@ -33,22 +33,29 @@ namespace MetaFort.Core.ECS
             if (e.NewType == TerrainType.Air || e.NewType == TerrainType.Water)
             {
                 int currIndex = _map.GetFlatIndex(e.Position.X, e.Position.Y, e.Position.Z);
-                int[] offsets = GetFlatOffsets();
                 
                 if (e.NewType == TerrainType.Water) 
                     _map.ActiveFluidTiles.Add(currIndex);
 
-                for (int i = 0; i < offsets.Length; i++)
+                TryWakeUpFluid(currIndex + 1, e.Position.X < _map.Width - 1);
+                TryWakeUpFluid(currIndex - 1, e.Position.X > 0);
+                TryWakeUpFluid(currIndex + _map.Width, e.Position.Y < _map.Height - 1);
+                TryWakeUpFluid(currIndex - _map.Width, e.Position.Y > 0);
+                
+                int xyPlane = _map.Width * _map.Height;
+                TryWakeUpFluid(currIndex + xyPlane, e.Position.Z < _map.Depth - 1);
+                TryWakeUpFluid(currIndex - xyPlane, e.Position.Z > 0);
+            }
+        }
+
+        private void TryWakeUpFluid(int flatIndex, bool withinBounds)
+        {
+            if (withinBounds)
+            {
+                var t = _map.GetTileRaw(flatIndex);
+                if (t.Type == TerrainType.Water)
                 {
-                    int nIndex = currIndex + offsets[i];
-                    if (nIndex >= 0 && nIndex < _map.Width * _map.Height * _map.Depth)
-                    {
-                        var t = _map.GetTileRaw(nIndex);
-                        if (t.Type == TerrainType.Water)
-                        {
-                            _map.ActiveFluidTiles.Add(nIndex);
-                        }
-                    }
+                    _map.ActiveFluidTiles.Add(flatIndex);
                 }
             }
         }
@@ -69,7 +76,6 @@ namespace MetaFort.Core.ECS
         {
             if (_map.ActiveFluidTiles.Count == 0) return;
 
-            int[] offsets = GetFlatOffsets();
             int xyPlane = _map.Width * _map.Height;
 
             var activeSetArray = new int[_map.ActiveFluidTiles.Count];
@@ -161,9 +167,6 @@ namespace MetaFort.Core.ECS
             }
         }
 
-        private int[] GetFlatOffsets()
-        {
-            return new int[] { 1, -1, _map.Width, -_map.Width, _map.Width * _map.Height, -(_map.Width * _map.Height) };
-        }
+
     }
 }

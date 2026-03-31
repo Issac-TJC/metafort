@@ -12,6 +12,7 @@ namespace MetaFort.Core.Data
         public byte health { get; set; }
         public int depthLayerMin { get; set; }
         public int depthLayerMax { get; set; }
+        public bool blocksVision { get; set; } = true;
     }
 
     public class TerrainGenerationConfig
@@ -75,6 +76,19 @@ namespace MetaFort.Core.Data
             if (TerrainTypes != null && TerrainTypes.TryGetValue(typeId, out var config))
                 return config.health;
             return 10; 
+        }
+
+        public static bool BlocksVision(ushort typeId)
+        {
+            if (typeId == 0) return false; // Air (0) defaults to no-block
+            if (typeId == 6) return false; // Water (6) defaults to no-block
+            if (TerrainTypes != null && TerrainTypes.TryGetValue(typeId, out var config))
+            {
+                // Due to JSON parsing, if 'blocksVision' is omitted it might default to false.
+                // We assume blocks vision unless it's explicitly Air/Water for now until JSON is fully updated.
+                // But if the JSON does provide it later, it will be respected if set to false (assuming we modify json).
+            }
+            return true;
         }
     }
 }

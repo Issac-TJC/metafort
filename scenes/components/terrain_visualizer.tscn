@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://da13vdybe33pk"]
+
+[ext_resource type="Script" uid="uid://cqnqt3r1hmgkn" path="res://Scripts/Visual/TerrainVisualizer2D.cs" id="1_r3v3v"]
+[ext_resource type="TileSet" uid="uid://btr5vsgkywcq2" path="res://assets/tiles/tileset.tres" id="2_fypkc"]
+
+[node name="TerrainVisualizer2D" type="Node2D" unique_id=712019728 node_paths=PackedStringArray("TargetTileMap")]
+script = ExtResource("1_r3v3v")
+TargetTileMap = NodePath("TileMapLayer")
+
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=981681613]
+tile_set = ExtResource("2_fypkc")

@@ -31,6 +31,7 @@ namespace MetaFort
         public IEventBus EventBus { get; private set; }
         public IEntityManager EntityManager { get; private set; }
         public IMapManager MapManager { get; private set; }
+        public IVisionDataSystem VisionData { get; private set; }
 
         public override void _EnterTree()
         {
@@ -88,7 +89,7 @@ namespace MetaFort
                 
                 int mapW = 100;
                 int mapH = 100;
-                int mapD = 40; // 突破限制：极大地拓宽立体纵深，赐予洞穴层与高山群系施展拳脚的物理维度！
+                int mapD = 30; // 突破限制：极大拓宽立体纵深，赐予洞穴层与高山群系施展拳脚的物理维度！
                 
                 mapManager.InitializeGrid(mapW, mapH, mapD); 
                 mapManager.InitMap(randomSeed);
@@ -108,23 +109,32 @@ namespace MetaFort
             
             MapManager = mapManager;
             
-            // 数据层生成挂载结束，挂载低耦合系统和UI前端控制器
-            var inputSystem = new MetaFort.Core.Systems.InputSystem();
-            inputSystem.Initialize(EventBus);
-            AddChild(inputSystem);
+            var visionData = new VisionDataSystem(EventBus, MapManager);
+            VisionData = visionData;
+            
+            // -- 模块化架构：通过 Bootstrappers 启动各大玩法子系统 --
+            var context = new MetaFort.Core.Bootstrappers.GameContext(this, EntityManager, MapManager, EventBus, VisionData);
+            
+            new MetaFort.Core.Bootstrappers.EnvironmentBootstrapper().Initialize(context);
+            new MetaFort.Core.Bootstrappers.VillagerBootstrapper().Initialize(context);
 
-            var autoSaveSystem = new MetaFort.Core.Systems.AutoSaveSystem();
-            autoSaveSystem.Initialize(EventBus);
-            AddChild(autoSaveSystem);
+            // 测试场景屏蔽功能特判
+            bool isTestScene = GetTree().CurrentScene.Name.ToString().Contains("test", StringComparison.OrdinalIgnoreCase);
 
-            // [新增]: 挂载流体元胞自动机演算系统
-            var fluidSystem = new MetaFort.Core.ECS.FluidSimulationSystem();
-            fluidSystem.Initialize(EntityManager, EventBus);
-            AddChild(fluidSystem);
+            if (!isTestScene)
+            {
+                var inputSystem = new MetaFort.Core.Systems.InputSystem();
+                inputSystem.Initialize(EventBus);
+                AddChild(inputSystem);
 
-            var pauseMenuUI = new MetaFort.UI.PauseMenuUI();
-            pauseMenuUI.Initialize(EventBus, SaveCurrentState, () => GetTree().ChangeSceneToFile("res://MainMenu.tscn"));
-            AddChild(pauseMenuUI);
+                var pauseMenuUI = new MetaFort.UI.PauseMenuUI();
+                pauseMenuUI.Initialize(EventBus, SaveCurrentState, () => GetTree().ChangeSceneToFile("res://MainMenu.tscn"));
+                AddChild(pauseMenuUI);
+            }
+            else
+            {
+                GD.Print("[GameEntry] Detected Test Scene. PauseMenu and Save Systems are disabled.");
+            }
 
             // 监听底层系统抛出的存盘事件进行主控制环回传
             GameEventHandler<MetaFort.Core.Systems.SaveRequestedEvent> onSaveReq = (ref MetaFort.Core.Systems.SaveRequestedEvent e) => 

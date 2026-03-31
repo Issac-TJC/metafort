@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://bgc06f5l5wo80"]
+
+[ext_resource type="Script" uid="uid://c5f0e0l0244s8" path="res://Scripts/GameEntry.cs" id="1_t7ssr"]
+[ext_resource type="PackedScene" uid="uid://da13vdybe33pk" path="res://scenes/components/terrain_visualizer.tscn" id="2_1vfbg"]
+
+[node name="test" type="Node" unique_id=1811413174]
+script = ExtResource("1_t7ssr")
+
+[node name="TerrainVisualizer2D" parent="." unique_id=712019728 instance=ExtResource("2_1vfbg")]
