@@ -128,7 +128,7 @@ namespace MetaFort.UI
             GameSession.CurrentSubSlot = 1; // 新游戏起始主时间锚必定设定为分支 1
             GameSession.IsNewGame = true;
             GameSession.Seed = new Random().Next();
-            GetTree().ChangeSceneToFile("res://test.tscn");
+            GetTree().ChangeSceneToFile("res://scenes/main/MainGame.tscn");
         }
 
         private void LoadGame(int slot, int subSlot)
@@ -136,7 +136,7 @@ namespace MetaFort.UI
             GameSession.CurrentSlot = slot;
             GameSession.CurrentSubSlot = subSlot;
             GameSession.IsNewGame = false;
-            GetTree().ChangeSceneToFile("res://test.tscn");
+            GetTree().ChangeSceneToFile("res://scenes/main/MainGame.tscn");
         }
     }
 }

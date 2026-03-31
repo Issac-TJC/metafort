@@ -69,9 +69,11 @@ namespace MetaFort.Core.Spatial
             
             System.Random randomOres = new System.Random(seed);
 
-            int baseHeight = Depth / 3; 
+            // 使用配表计算环境基准线，若配表丢失则依照景深比例自适应，彻底消灭“全球大洪水”
+            var genConfig = MetaFort.Core.Data.ConfigManager.TerrainGeneration;
+            int baseHeight = genConfig?.surfaceDepthDivision > 0 ? Depth / genConfig.surfaceDepthDivision : Depth / 3; 
             int amplitude = Depth / 4;
-            int SeaLevel = 15;
+            int SeaLevel = genConfig?.seaLevelDivision > 0 ? Depth / genConfig.seaLevelDivision : Depth / 4;
 
             // ==========================================
             // Phase 1 & 2: 2D 宏观群系计算与 Z 轴垂直柱填充 

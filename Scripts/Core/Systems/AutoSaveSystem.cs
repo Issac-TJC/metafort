@@ -13,8 +13,18 @@ namespace MetaFort.Core.Systems
         private IEventBus _eventBus;
         private Timer _autoSaveTimer;
 
+        public override void _Ready()
+        {
+            // 作为可拆卸的组件节点，在进入场景时主动寻访主程序的 EventBus 进行自我启动
+            if (GameEntry.Instance != null && GameEntry.Instance.EventBus != null)
+            {
+                Initialize(GameEntry.Instance.EventBus);
+            }
+        }
+
         public void Initialize(IEventBus eventBus)
         {
+            if (_autoSaveTimer != null) return; // 防重复启动
             _eventBus = eventBus;
             SetupTimer();
         }

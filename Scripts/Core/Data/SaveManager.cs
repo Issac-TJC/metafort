@@ -65,6 +65,22 @@ namespace MetaFort.Core.Data
             }
         }
 
+        public static void SaveVillagers(int slot, int subSlot, string jsonContent)
+        {
+            string path = ProjectSettings.GlobalizePath($"user://metafort_save_slot_{slot}_sub_{subSlot}_villagers.json");
+            File.WriteAllText(path, jsonContent);
+        }
+
+        public static bool LoadVillagers(int slot, int subSlot, out string jsonContent)
+        {
+            jsonContent = null;
+            string path = ProjectSettings.GlobalizePath($"user://metafort_save_slot_{slot}_sub_{subSlot}_villagers.json");
+            if (!File.Exists(path)) return false;
+
+            jsonContent = File.ReadAllText(path);
+            return true;
+        }
+
         public static void DeleteSave(int slot)
         {
             // 一并引爆主宇宙底下的全部微观物理时间线 (0-9子档)
@@ -72,6 +88,9 @@ namespace MetaFort.Core.Data
             {
                 string path = GetSavePath(slot, sub);
                 if (File.Exists(path)) File.Delete(path);
+
+                string villagerPath = ProjectSettings.GlobalizePath($"user://metafort_save_slot_{slot}_sub_{sub}_villagers.json");
+                if (File.Exists(villagerPath)) File.Delete(villagerPath);
             }
         }
     }

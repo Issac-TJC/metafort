@@ -13,7 +13,7 @@ config_version=5
 config/name="metafort"
 run/main_scene="uid://rbjegb7b4y20"
 config/features=PackedStringArray("4.6", "C#", "Forward Plus")
-config/icon="res://icon.svg"
+config/icon="res://assets/icon.svg"
 
 [dotnet]
 

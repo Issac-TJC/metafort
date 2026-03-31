@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://c8k2b7gsasac8"]
+
+[ext_resource type="Script" uid="uid://c5f0e0l0244s8" path="res://Scripts/GameEntry.cs" id="1_7xy0m"]
+[ext_resource type="Script" uid="uid://c6ivu0kjnapd5" path="res://Scripts/Visual/VillagerCanvasRenderer.cs" id="2_mbbyr"]
+[ext_resource type="PackedScene" uid="uid://da13vdybe33pk" path="res://scenes/components/terrain_visualizer.tscn" id="3_kjqfw"]
+[ext_resource type="Texture2D" uid="uid://bxenp3ukegkvc" path="res://assets/Textures/Body/Naked_Female_south.png" id="3_ne40w"]
+[ext_resource type="Script" uid="uid://b2fhh1e8pwoxi" path="res://Scripts/Test_Control/ControlTestVillager.cs" id="4_ne40w"]
+[ext_resource type="Texture2D" uid="uid://ii03y2m32662" path="res://assets/Textures/Head/Female_Average_Normal_south.png" id="4_y8xeh"]
+[ext_resource type="Texture2D" uid="uid://li741bn2b5yy" path="res://assets/Textures/Hair/DR_Japan_south.png" id="5_w37wx"]
+
+[node name="VillagerTestScene" type="Node2D" unique_id=2060398983]
+script = ExtResource("1_7xy0m")
+
+[node name="VillagerCanvasRenderer" type="Node2D" parent="." unique_id=1390215624]
+z_index = 5
+script = ExtResource("2_mbbyr")
+TorsoTextures = Array[Texture2D]([ExtResource("3_ne40w")])
+HeadTextures = Array[Texture2D]([ExtResource("4_y8xeh")])
+ClothesTextures = Array[Texture2D]([])
+HairTextures = Array[Texture2D]([ExtResource("5_w37wx")])
+CharacterScale = 0.6
+HeadOffset = Vector2(0, -16)
+HairOffset = Vector2(0, -16)
+
+[node name="TerrainVisualizer2D" parent="." unique_id=712019728 instance=ExtResource("3_kjqfw")]
+
+[node name="ControlTestVillager" type="Node2D" parent="." unique_id=2040090119 node_paths=PackedStringArray("Visualizer", "CanvasRenderer")]
+script = ExtResource("4_ne40w")
+Visualizer = NodePath("../TerrainVisualizer2D")
+CanvasRenderer = NodePath("../VillagerCanvasRenderer")
