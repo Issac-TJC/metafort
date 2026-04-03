@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Collections.Generic;
 using Godot;
+using MetaFort.Core.Items;
 
 namespace MetaFort.Core.Data
 {
@@ -44,6 +45,7 @@ namespace MetaFort.Core.Data
         public static void LoadAllConfigs()
         {
             LoadTerrainConfig();
+            ItemConfigManager.LoadItemConfig();
         }
 
         private static void LoadTerrainConfig()
