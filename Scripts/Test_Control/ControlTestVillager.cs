@@ -143,6 +143,16 @@ namespace MetaFort.Test_Control
                     });
 
                     _entityManager.AddComponent(id, new VillagerStateComponent { CurrentAction = VillagerAction.Idle });
+                    
+                    _entityManager.AddComponent(id, new BiologicalComponent 
+                    { 
+                        Gender = (Godot.GD.Randf() > 0.5f) ? Gender.Male : Gender.Female, // Male or Female
+                        Hunger = 0f, 
+                        Stamina = 0f, 
+                        Sanity = 100f, 
+                        Libido = 0f 
+                    });
+
                     spawned++;
                 }
             }

@@ -74,7 +74,7 @@ namespace MetaFort
             MetaFort.Core.Data.ConfigManager.LoadAllConfigs();
             EventBus = new EventBus();
             EntityManager = new EntityManager(10000); 
-            
+
             var mapManager = new MapManager();
             mapManager.InjectDependencies(EventBus);
             

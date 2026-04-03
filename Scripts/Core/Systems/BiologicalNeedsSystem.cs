@@ -23,10 +23,12 @@ namespace MetaFort.Core.Systems
             _eventBus = eventBus;
         }
 
-        public void Update(double deltaTime)
+        public void Update(double hoursPassedDelta)
         {
             _starvingEntities.Clear();
-            float dt = (float)deltaTime;
+            
+            float hoursPassed = (float)hoursPassedDelta;
+            if (hoursPassed <= 0) return; // 暂停状态无需空转
 
             // 获取极致性能的致密数组
             ReadOnlySpan<uint> entityIds = _entityManager.GetDenseEntityIds<BiologicalComponent>();
@@ -36,14 +38,63 @@ namespace MetaFort.Core.Systems
             {
                 uint entityId = entityIds[i];
                 ref var bio = ref _entityManager.GetComponent<BiologicalComponent>(entityId);
+                
+                // 默认乘数
+                float actionMultiplier = 1.0f;
+                bool isWorking = false;
 
-                // 随着时间流逝的生理需求变化
-                bio.Hunger += 5f * dt;
-                bio.Stamina -= 2f * dt;
-                bio.Sanity -= 1f * dt;
-                bio.Libido += 2f * dt;
+                // 尝试获取当前行为状态，如果存在则进行乘区结算
+                if (_entityManager.HasComponent<VillagerStateComponent>(entityId))
+                {
+                    ref var state = ref _entityManager.GetComponent<VillagerStateComponent>(entityId);
+                    if (state.CurrentAction == VillagerAction.Moving)
+                        actionMultiplier = 1.5f;
+                    else if (state.CurrentAction == VillagerAction.Digging || state.CurrentAction == VillagerAction.Building)
+                    {
+                        actionMultiplier = 3.0f;
+                        isWorking = true;
+                    }
+                }
 
-                // 钳制数值范围 0-100
+                // === 1. Hunger 饥饿代谢逻辑 ===
+                float fatiguePenalty = bio.Stamina > 80f ? 1.2f : 1.0f;
+                float hungerDelta = 2.5f * actionMultiplier * fatiguePenalty * hoursPassed;
+                bio.Hunger += hungerDelta;
+
+                // === 2. Stamina 肌肉疲劳逻辑 ===
+                float staminaBaseRate = 4.0f;
+                if (isWorking) staminaBaseRate += 2.0f; // 重体力劳动加速基础流失
+                
+                float starvationMultiplier = 1.0f;
+                if (bio.Hunger > 50f)
+                {
+                    float hungerExcess = bio.Hunger - 50f;
+                    starvationMultiplier += (hungerExcess * hungerExcess) * 0.001f;
+                }
+                bio.Stamina += staminaBaseRate * starvationMultiplier * hoursPassed;
+
+                // === 3. Sanity 弹性情绪标的逻辑 ===
+                float targetSanity = 100f; // 100 为理智充沛
+                if (bio.Hunger > 60f) targetSanity -= (bio.Hunger - 60f) * 1.5f;
+                if (bio.Stamina > 75f) targetSanity -= 30f;
+                if (bio.Libido > 80f) targetSanity -= 15f;
+                
+                // 阻尼回准 (拉赫平滑过度)
+                bio.Sanity += (targetSanity - bio.Sanity) * 0.1f * hoursPassed;
+
+                // === 4. Libido 马斯洛阶层需求逻辑 ===
+                if (bio.Hunger > 70f || bio.Sanity < 30f)
+                {
+                    // 生存受到威胁，强行熔断社交与繁衍需求
+                    bio.Libido -= 3.0f * hoursPassed;
+                }
+                else
+                {
+                    // 饱暖思淫欲，每天累计约10点
+                    bio.Libido += 0.41f * hoursPassed;
+                }
+
+                // === 5. 数值越界钳制 0-100 ===
                 bio.Hunger = Math.Clamp(bio.Hunger, 0f, 100f);
                 bio.Stamina = Math.Clamp(bio.Stamina, 0f, 100f);
                 bio.Sanity = Math.Clamp(bio.Sanity, 0f, 100f);

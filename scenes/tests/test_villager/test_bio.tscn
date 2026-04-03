@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bbagnhqp0qpbh"]
+
+[ext_resource type="Script" uid="uid://c5f0e0l0244s8" path="res://Scripts/GameEntry.cs" id="1_64pbf"]
+
+[node name="TestBio" type="Node2D" unique_id=657246522]
+script = ExtResource("1_64pbf")
