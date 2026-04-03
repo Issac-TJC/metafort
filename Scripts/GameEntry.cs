@@ -3,6 +3,7 @@ using System;
 using MetaFort.Core.EventBus;
 using MetaFort.Core.ECS;
 using MetaFort.Core.Spatial;
+using MetaFort.Core.Items;
 using TileData = MetaFort.Core.Spatial.TileData;
 
 namespace MetaFort
@@ -32,6 +33,7 @@ namespace MetaFort
         public IEntityManager EntityManager { get; private set; }
         public IMapManager MapManager { get; private set; }
         public IVisionDataSystem VisionData { get; private set; }
+        public ItemSystemNode ItemSystem { get; private set; }
 
         public override void _EnterTree()
         {
@@ -118,6 +120,11 @@ namespace MetaFort
             new MetaFort.Core.Bootstrappers.EnvironmentBootstrapper().Initialize(context);
             new MetaFort.Core.Bootstrappers.VillagerBootstrapper().Initialize(context);
 
+            ItemSystem = new ItemSystemNode();
+            ItemSystem.Name = "ItemSystemNode";
+            ItemSystem.Initialize(EventBus, EntityManager, MapManager);
+            AddChild(ItemSystem);
+
             // 测试场景屏蔽功能特判
             bool isTestScene = GetTree().CurrentScene.Name.ToString().Contains("test", StringComparison.OrdinalIgnoreCase);
 
@@ -127,12 +134,20 @@ namespace MetaFort
                 inputSystem.Initialize(EventBus);
                 AddChild(inputSystem);
 
+                var contextMenuUI = new MetaFort.UI.ContextActionMenuUI();
+                contextMenuUI.Initialize(EventBus);
+                AddChild(contextMenuUI);
+
                 var pauseMenuUI = new MetaFort.UI.PauseMenuUI();
                 pauseMenuUI.Initialize(EventBus, SaveCurrentState, () => GetTree().ChangeSceneToFile("res://MainMenu.tscn"));
                 AddChild(pauseMenuUI);
             }
             else
             {
+                var contextMenuUI = new MetaFort.UI.ContextActionMenuUI();
+                contextMenuUI.Initialize(EventBus);
+                AddChild(contextMenuUI);
+
                 GD.Print("[GameEntry] Detected Test Scene. PauseMenu and Save Systems are disabled.");
             }
 

@@ -1,0 +1,60 @@
+{
+  "items": [
+    {
+      "id": "res_wood",
+      "displayName": "Wood",
+      "maxDurability": 1,
+      "hardness": 1,
+      "blocksVision": false,
+      "blocksMovement": false,
+      "footprintX": 1,
+      "footprintY": 1,
+      "placementFlags": 0,
+      "occupiedOffsets": [
+        { "x": 0, "y": 0, "z": 0 }
+      ],
+      "requiredMaterials": [],
+      "texturePath": "res://assets/Textures/Things/Item/Resource/Dbiz.png",
+      "interactionScript": ""
+    },
+    {
+      "id": "build_ladder_wood",
+      "displayName": "Wood Ladder",
+      "maxDurability": 120,
+      "hardness": 15,
+      "blocksVision": false,
+      "blocksMovement": false,
+      "footprintX": 1,
+      "footprintY": 1,
+      "placementFlags": 3,
+      "occupiedOffsets": [
+        { "x": 0, "y": 0, "z": 0 }
+      ],
+      "requiredMaterials": [
+        { "itemId": "res_wood", "count": 4 }
+      ],
+      "texturePath": "res://assets/Textures/Things/Item/Resource/Dwool.png",
+      "interactionScript": "LadderBehavior"
+    },
+    {
+      "id": "debug_bell",
+      "displayName": "Debug Bell",
+      "maxDurability": 80,
+      "hardness": 5,
+      "blocksVision": false,
+      "blocksMovement": false,
+      "footprintX": 2,
+      "footprintY": 1,
+      "placementFlags": 1,
+      "occupiedOffsets": [
+        { "x": 0, "y": 0, "z": 0 },
+        { "x": 1, "y": 0, "z": 0 }
+      ],
+      "requiredMaterials": [
+        { "itemId": "res_wood", "count": 2 }
+      ],
+      "texturePath": "res://assets/Textures/Things/Item/Resource/Dhorn.png",
+      "interactionScript": "DebugBellBehavior"
+    }
+  ]
+}
