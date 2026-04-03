@@ -7,6 +7,9 @@
 [ext_resource type="Script" uid="uid://b2fhh1e8pwoxi" path="res://Scripts/Test_Control/ControlTestVillager.cs" id="4_ne40w"]
 [ext_resource type="Texture2D" uid="uid://ii03y2m32662" path="res://assets/Textures/Head/Female_Average_Normal_south.png" id="4_y8xeh"]
 [ext_resource type="Texture2D" uid="uid://li741bn2b5yy" path="res://assets/Textures/Hair/DR_Japan_south.png" id="5_w37wx"]
+[ext_resource type="Script" uid="uid://dknt628gh85re" path="res://Scripts/Core/Systems/SimulationTimeNode.cs" id="8_u68w1"]
+[ext_resource type="Script" uid="uid://bn4ay11d1v1s6" path="res://Scripts/Core/Systems/BioSystemNode.cs" id="9_g8rjk"]
+[ext_resource type="Script" uid="uid://b5rrxb6rj8svj" path="res://Scripts/Test_Control/VillagerBioDebugNode.cs" id="10_1d0lr"]
 
 [node name="VillagerTestScene" type="Node2D" unique_id=2060398983]
 script = ExtResource("1_7xy0m")
@@ -28,3 +31,18 @@ HairOffset = Vector2(0, -16)
 script = ExtResource("4_ne40w")
 Visualizer = NodePath("../TerrainVisualizer2D")
 CanvasRenderer = NodePath("../VillagerCanvasRenderer")
+
+[node name="SimulationTimeNode" type="Node" parent="." unique_id=989077279]
+script = ExtResource("8_u68w1")
+Day = 0
+Hour = 0
+metadata/_custom_type_script = "uid://dknt628gh85re"
+
+[node name="BioSystemNode" type="Node" parent="." unique_id=1537732906 node_paths=PackedStringArray("TimeSource")]
+script = ExtResource("9_g8rjk")
+TimeSource = NodePath("../SimulationTimeNode")
+metadata/_custom_type_script = "uid://bn4ay11d1v1s6"
+
+[node name="VillagerBioDebugNode" type="Node" parent="." unique_id=324509472]
+script = ExtResource("10_1d0lr")
+metadata/_custom_type_script = "uid://b5rrxb6rj8svj"
