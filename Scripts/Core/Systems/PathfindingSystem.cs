@@ -27,8 +27,13 @@ namespace MetaFort.Core.Systems
 
         public void Initialize(IEntityManager entityManager, MetaFort.Core.EventBus.IEventBus eventBus)
         {
+            Initialize(entityManager, eventBus, null);
+        }
+
+        public void Initialize(IEntityManager entityManager, MetaFort.Core.EventBus.IEventBus eventBus, IMapManager mapManager)
+        {
             _entityManager = entityManager;
-            _mapManager = GameEntry.Instance?.MapManager;
+            _mapManager = mapManager;
 
             if (eventBus != null)
             {

@@ -4,7 +4,10 @@ using System.Collections.Generic;
 namespace MetaFort.Core.ECS
 {
     // 非泛型基底接口，仅仅为了能用 Dictionary 进行集中式管理
-    public interface IComponentArray { }
+    public interface IComponentArray
+    {
+        void RemoveEntity(uint entityId);
+    }
 
     /// <summary>
     /// 基于 Struct of Arrays (SOA) 与稀疏集紧凑数组 (Sparse Set) 
@@ -77,6 +80,11 @@ namespace MetaFort.Core.ECS
             _size--;
         }
 
+        public void RemoveEntity(uint entityId)
+        {
+            Remove(entityId);
+        }
+
         // ===================================
         // 新增的 Join 查询特权 API
         // ===================================
@@ -125,6 +133,11 @@ namespace MetaFort.Core.ECS
             if (!IsAlive(entityId)) return;
 
             int index = (int)(entityId & 0x00FFFFFF);
+
+            foreach (IComponentArray componentArray in _componentArrays.Values)
+            {
+                componentArray.RemoveEntity(entityId);
+            }
 
             _generations[index]++; 
             _availableIndices.Enqueue(index);

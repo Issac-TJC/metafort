@@ -10,6 +10,9 @@ namespace MetaFort.UI
         public static int CurrentSubSlot = 1;
         public static bool IsNewGame = true;
         public static int Seed = 0;
+        public static int MapWidth = 275;
+        public static int MapHeight = 275;
+        public static int MapDepth = 30;
     }
 
     public partial class MainMenu : Control

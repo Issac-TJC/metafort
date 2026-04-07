@@ -29,12 +29,10 @@ namespace MetaFort.Core.Bootstrappers
         {
             // 初始化系统
             var pathfinding = new PathfindingSystem();
-            pathfinding.Initialize(context.EntityManager, context.EventBus);
-            pathfinding.InjectMapManager(context.MapManager);
+            pathfinding.Initialize(context.EntityManager, context.EventBus, context.MapManager);
 
             var visibility = new VisibilityCalculationSystem();
-            visibility.Initialize(context.EntityManager, context.EventBus);
-            visibility.InjectDependencies(context.MapManager, context.VisionData);
+            visibility.Initialize(context.EntityManager, context.EventBus, context.MapManager, context.VisionData);
 
             // 包装为 Node 纳入主循环更新
             var runner = new VillagerSystemRunner();

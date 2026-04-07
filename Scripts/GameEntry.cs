@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using System;
 using MetaFort.Core.EventBus;
 using MetaFort.Core.ECS;
@@ -8,7 +8,7 @@ using TileData = MetaFort.Core.Spatial.TileData;
 namespace MetaFort
 {
     // ==========================================
-    // 测试用组件与事件定义
+    // 娴嬭瘯鐢ㄧ粍浠朵笌浜嬩欢瀹氫箟
     // ==========================================
     public struct StatusChangedEvent : IGameEvent { public string Status; }
     public struct TestMessageEvent : IGameEvent { public string Message; }
@@ -21,23 +21,33 @@ namespace MetaFort
     }
 
     // ==========================================
-    // 游戏主入口 (单例模式，可挂载于Godot的Root Node或Autoload)
+    // 娓告垙涓诲叆鍙?(鍗曚緥妯″紡锛屽彲鎸傝浇浜嶨odot鐨凴oot Node鎴朅utoload)
     // ==========================================
     public partial class GameEntry : Node
     {
-        // 提供单例访问点，方便其他脚本快速获取核心子系统
+        // 鎻愪緵鍗曚緥璁块棶鐐癸紝鏂逛究鍏朵粬鑴氭湰蹇€熻幏鍙栨牳蹇冨瓙绯荤粺
         public static GameEntry Instance { get; private set; }
+
+        [Export]
+        public int DefaultMapWidth { get; set; } = 275;
+
+        [Export]
+        public int DefaultMapHeight { get; set; } = 275;
+
+        [Export]
+        public int DefaultMapDepth { get; set; } = 30;
 
         public IEventBus EventBus { get; private set; }
         public IEntityManager EntityManager { get; private set; }
         public IMapManager MapManager { get; private set; }
         public IVisionDataSystem VisionData { get; private set; }
+        private bool _initializationFailed;
 
         public override void _EnterTree()
         {
             if (Instance != null && Instance != this && GodotObject.IsInstanceValid(Instance))
             {
-                QueueFree(); // 确保场景中只有一个有效 GameEntry
+                QueueFree(); // 纭繚鍦烘櫙涓彧鏈変竴涓湁鏁?GameEntry
                 return;
             }
 
@@ -47,7 +57,7 @@ namespace MetaFort
 
         public override void _ExitTree()
         {
-            // 切换回主菜单销毁该场景时，彻底释放单例锁，以便下一次重新游玩时能正常重新初始化
+            // 鍒囨崲鍥炰富鑿滃崟閿€姣佽鍦烘櫙鏃讹紝褰诲簳閲婃斁鍗曚緥閿侊紝浠ヤ究涓嬩竴娆￠噸鏂版父鐜╂椂鑳芥甯搁噸鏂板垵濮嬪寲
             if (Instance == this)
             {
                 Instance = null;
@@ -56,29 +66,41 @@ namespace MetaFort
 
         public override void _Ready()
         {
-            if (Instance != this) return; // 短路拦截：已经被标志为删除的冗余节点禁止执行测试
+            if (Instance != this) return; // 鐭矾鎷︽埅锛氬凡缁忚鏍囧織涓哄垹闄ょ殑鍐椾綑鑺傜偣绂佹鎵ц娴嬭瘯
+
+            if (_initializationFailed)
+            {
+                GD.PrintErr("[GameEntry] Startup aborted because one or more required configs failed validation.");
+                return;
+            }
 
             GD.Print(">>> [GameEntry] MetaFort High Performance Subsystems Booting <<<\n");
             
-            // 运行诊断级测试
-            RunDiagnostics();
+            // 杩愯璇婃柇绾ф祴璇?            RunDiagnostics();
             
             GD.Print("\n>>> [GameEntry] All Subsystem Checks Passed Successfully! <<<");
         }
 
         /// <summary>
-        /// 初始化所有的核心底层系统
+        /// 鍒濆鍖栨墍鏈夌殑鏍稿績搴曞眰绯荤粺
         /// </summary>
         private void InitializeCoreSystems()
         {
-            MetaFort.Core.Data.ConfigManager.LoadAllConfigs();
+            if (!MetaFort.Core.Data.ConfigManager.LoadAllConfigs())
+            {
+                _initializationFailed = true;
+                GD.PrintErr("[GameEntry] Core config validation failed. Scene bootstrap has been stopped.");
+                return;
+            }
+
+            _initializationFailed = false;
             EventBus = new EventBus();
             EntityManager = new EntityManager(10000); 
 
             var mapManager = new MapManager();
             mapManager.InjectDependencies(EventBus);
             
-            // 读取全局 Session 以决定是读取旧档还是创建真随机种子档
+            // 璇诲彇鍏ㄥ眬 Session 浠ュ喅瀹氭槸璇诲彇鏃ф。杩樻槸鍒涘缓鐪熼殢鏈虹瀛愭。
             int slot = MetaFort.UI.GameSession.CurrentSlot == 0 ? 1 : MetaFort.UI.GameSession.CurrentSlot;
             int subSlot = MetaFort.UI.GameSession.CurrentSubSlot;
             
@@ -87,14 +109,14 @@ namespace MetaFort
                 int randomSeed = MetaFort.UI.GameSession.Seed != 0 ? MetaFort.UI.GameSession.Seed : new System.Random().Next();
                 GD.Print($"[SaveManager] Creating New Flat Map with Random Seed: {randomSeed}");
                 
-                int mapW = 100;
-                int mapH = 100;
-                int mapD = 30; // 突破限制：极大拓宽立体纵深，赐予洞穴层与高山群系施展拳脚的物理维度！
+                int mapW = MetaFort.UI.GameSession.MapWidth > 0 ? MetaFort.UI.GameSession.MapWidth : DefaultMapWidth;
+                int mapH = MetaFort.UI.GameSession.MapHeight > 0 ? MetaFort.UI.GameSession.MapHeight : DefaultMapHeight;
+                int mapD = MetaFort.UI.GameSession.MapDepth > 0 ? MetaFort.UI.GameSession.MapDepth : DefaultMapDepth; // 绐佺牬闄愬埗锛氭瀬澶ф嫇瀹界珛浣撶旱娣憋紝璧愪簣娲炵┐灞備笌楂樺北缇ょ郴鏂藉睍鎷宠剼鐨勭墿鐞嗙淮搴︼紒
                 
                 mapManager.InitializeGrid(mapW, mapH, mapD); 
                 mapManager.InitMap(randomSeed);
                 
-                // 初始化地块后立刻固化进初版基础游玩子档案中，建立首个平行时间点锚点
+                // 鍒濆鍖栧湴鍧楀悗绔嬪埢鍥哄寲杩涘垵鐗堝熀纭€娓哥帺瀛愭。妗堜腑锛屽缓绔嬮涓钩琛屾椂闂寸偣閿氱偣
                 MetaFort.Core.Data.SaveManager.SaveGame(slot, subSlot, randomSeed, mapW, mapH, mapD, mapManager.SerializeMap());
             }
             else
@@ -112,13 +134,14 @@ namespace MetaFort
             var visionData = new VisionDataSystem(EventBus, MapManager);
             VisionData = visionData;
             
-            // -- 模块化架构：通过 Bootstrappers 启动各大玩法子系统 --
+            // -- 妯″潡鍖栨灦鏋勶細閫氳繃 Bootstrappers 鍚姩鍚勫ぇ鐜╂硶瀛愮郴缁?--
             var context = new MetaFort.Core.Bootstrappers.GameContext(this, EntityManager, MapManager, EventBus, VisionData);
             
             new MetaFort.Core.Bootstrappers.EnvironmentBootstrapper().Initialize(context);
             new MetaFort.Core.Bootstrappers.VillagerBootstrapper().Initialize(context);
 
-            // 测试场景屏蔽功能特判
+
+            // 娴嬭瘯鍦烘櫙灞忚斀鍔熻兘鐗瑰垽
             bool isTestScene = GetTree().CurrentScene.Name.ToString().Contains("test", StringComparison.OrdinalIgnoreCase);
 
             if (!isTestScene)
@@ -136,16 +159,15 @@ namespace MetaFort
                 GD.Print("[GameEntry] Detected Test Scene. PauseMenu and Save Systems are disabled.");
             }
 
-            // 监听底层系统抛出的存盘事件进行主控制环回传
-            GameEventHandler<MetaFort.Core.Systems.SaveRequestedEvent> onSaveReq = (ref MetaFort.Core.Systems.SaveRequestedEvent e) => 
+            // Save request bridge
+            GameEventHandler<MetaFort.Core.Systems.SaveRequestedEvent> onSaveReq = (ref MetaFort.Core.Systems.SaveRequestedEvent e) =>
             {
                 SaveCurrentState(e.SubSlot);
             };
             EventBus.Subscribe(onSaveReq);
         }
 
-        // UI和自动保存系统的硬编码逻辑已完全移除至独立系统中。
-
+        // UI鍜岃嚜鍔ㄤ繚瀛樼郴缁熺殑纭紪鐮侀€昏緫宸插畬鍏ㄧЩ闄よ嚦鐙珛绯荤粺涓€?
         private void SaveCurrentState(int subSlot)
         {
             if (MapManager is MapManager mm)
@@ -156,13 +178,12 @@ namespace MetaFort
         }
 
         /// <summary>
-        /// 将原 Test.cs 与 GameEntry 对模块的独立测试合并在一起
-        /// 方便快速验证架构的当前状况
+        /// 灏嗗師 Test.cs 涓?GameEntry 瀵规ā鍧楃殑鐙珛娴嬭瘯鍚堝苟鍦ㄤ竴璧?        /// 鏂逛究蹇€熼獙璇佹灦鏋勭殑褰撳墠鐘跺喌
         /// </summary>
         private void RunDiagnostics()
         {
             // ==========================================
-            // 1. EventBus 测试
+            // 1. EventBus 娴嬭瘯
             // ==========================================
             GD.Print("=== Testing 1: EventBus ===");
             
@@ -172,8 +193,7 @@ namespace MetaFort
             GameEventHandler<TestMessageEvent> onTestMessage = (ref TestMessageEvent e) => 
                 GD.Print($"[EventBus] TestMessageEvent received. Message: '{e.Message}'");
             
-            // 订阅事件并发布
-            EventBus.Subscribe(onStatusChanged);
+            // 璁㈤槄浜嬩欢骞跺彂甯?            EventBus.Subscribe(onStatusChanged);
             EventBus.Subscribe(onTestMessage);
             
             var statusEvent = new StatusChangedEvent { Status = "All Systems Nominal" };
@@ -186,7 +206,7 @@ namespace MetaFort
             EventBus.Unsubscribe(onTestMessage);
 
             // ==========================================
-            // 2. ECS 测试
+            // 2. ECS 娴嬭瘯
             // ==========================================
             GD.Print("\n=== Testing 2: EntityManager with Struct Of Arrays (SOA) ===");
             
@@ -195,24 +215,21 @@ namespace MetaFort
             uint idxA = entityA & 0x00FFFFFF;
             GD.Print($"[ECS] Created EntityA ID: 0x{entityA:X8} (Generation: {genA}, Index: {idxA})");
             
-            // 原位添加且原位修改组件
-            EntityManager.AddComponent(entityA, new HealthComponent { Health = 100 });
+            // 鍘熶綅娣诲姞涓斿師浣嶄慨鏀圭粍浠?            EntityManager.AddComponent(entityA, new HealthComponent { Health = 100 });
             ref HealthComponent healthRef = ref EntityManager.GetComponent<HealthComponent>(entityA);
             healthRef.Health -= 25; 
             GD.Print($"[ECS] EntityA Health modified in-place using ref. Verified Health: {EntityManager.GetComponent<HealthComponent>(entityA).Health}");
             
-            // 添加来自原 Test.cs 的基于 GridPosition 的测试组件
-            EntityManager.AddComponent(entityA, new PositionComponent(5, 5, 2));
+            // 娣诲姞鏉ヨ嚜鍘?Test.cs 鐨勫熀浜?GridPosition 鐨勬祴璇曠粍浠?            EntityManager.AddComponent(entityA, new PositionComponent(5, 5, 2));
             var pos = EntityManager.GetComponent<PositionComponent>(entityA).Position;
             GD.Print($"[ECS] EntityA Position added at (X:{pos.X}, Y:{pos.Y}, Z:{pos.Z})");
 
-            // 销毁并验证IsAlive
+            // 閿€姣佸苟楠岃瘉IsAlive
             EntityManager.DestroyEntity(entityA);
             GD.Print($"[ECS] Destroyed EntityA. IsAlive: {EntityManager.IsAlive(entityA)}"); 
             
             // ==========================================
-            // 3. MapManager 测试: 地形生成与沙盒交互
-            // ==========================================
+            // 3. MapManager 娴嬭瘯: 鍦板舰鐢熸垚涓庢矙鐩掍氦浜?            // ==========================================
             GD.Print("\n=== Testing 3: Spatial MapManager Sandbox APIs ===");
             
             int x = 5, y = 5, z = 2;
@@ -221,25 +238,25 @@ namespace MetaFort
             
             if (MapManager is MapManager actualMapManager)
             {
-                // 读取自然生成的方块
+                // Read generated tile
                 TileData genTile = actualMapManager.GetTile(x, y, z);
-                GD.Print($"[Spatial] Naturally Generated Tile at ({x},{y},{z}): {genTile.Type}, Health: {genTile.Health}");
 
-                // 监听地图变更事件
+                // 鐩戝惉鍦板浘鍙樻洿浜嬩欢
                 GameEventHandler<TerrainModifiedEvent> onTerrainMod = (ref TerrainModifiedEvent e) => 
                 {
                     GD.Print($"[TerrainModifiedEvent] Position: {e.Position}, Old: {e.OldType}, New: {e.NewType}");
                 };
                 EventBus.Subscribe(onTerrainMod);
 
-                // 玩家尝试挖掘并替换为空气
+                // 鐜╁灏濊瘯鎸栨帢骞舵浛鎹负绌烘皵
                 GD.Print("[Spatial] Player executing ReplaceTile...");
                 bool replaced = actualMapManager.ReplaceTile(x, y, z, TerrainType.Air);
                 GD.Print($"[Spatial] Tile Replaced Result: {replaced}");
                 
-                // 去除监听
+                // 鍘婚櫎鐩戝惉
                 EventBus.Unsubscribe(onTerrainMod);
             }
         }
     }
 }
+

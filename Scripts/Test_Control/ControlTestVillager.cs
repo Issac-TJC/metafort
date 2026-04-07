@@ -1,35 +1,59 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 using MetaFort.Core.ECS;
 using MetaFort.Core.Spatial;
 using MetaFort.Core.EventBus;
 using MetaFort.Core.Systems;
+using MetaFort.Core.EventBus.Events;
+using MetaFort.Core.Items;
 
 namespace MetaFort.Test_Control
 {
     public partial class ControlTestVillager : Node
     {
-        [Export] 
+        [Export]
         public MetaFort.Visual.TerrainVisualizer2D Visualizer;
 
         [Export]
         public MetaFort.Visual.VillagerCanvasRenderer CanvasRenderer;
 
+        [Export]
+        public NodePath CoreSourcePath { get; set; }
+
+        [Export]
+        public NodePath ItemSystemPath { get; set; }
+
         private IEntityManager _entityManager;
         private IMapManager _mapManager;
         private IEventBus _eventBus;
+        private ItemSystemNode _itemSystem;
 
         public override void _Ready()
         {
-            if (GameEntry.Instance != null)
+            Node coreSource = GetNodeOrNull(CoreSourcePath);
+            if (coreSource is MetaFort.GameEntry gameEntry)
             {
-                _entityManager = GameEntry.Instance.EntityManager;
-                _mapManager = GameEntry.Instance.MapManager;
-                _eventBus = GameEntry.Instance.EventBus;
+                _entityManager = gameEntry.EntityManager;
+                _mapManager = gameEntry.MapManager;
+                _eventBus = gameEntry.EventBus;
             }
             else
             {
-                GD.PrintErr("[ControlTestVillager] GameEntry not found! Sandboxed operation aborted.");
+                GD.PrintErr($"[ControlTestVillager] CoreSourcePath '{CoreSourcePath}' must point to a GameEntry node.");
+                return;
+            }
+
+            _itemSystem = GetNodeOrNull<ItemSystemNode>(ItemSystemPath);
+            if (_itemSystem == null)
+            {
+                GD.PrintErr($"[ControlTestVillager] ItemSystemPath '{ItemSystemPath}' must point to an ItemSystemNode.");
+                return;
+            }
+
+            if (_entityManager == null || _mapManager == null || _eventBus == null)
+            {
+                GD.PrintErr("[ControlTestVillager] GameEntry core systems are not ready. Sandboxed operation aborted.");
                 return;
             }
 
@@ -40,6 +64,27 @@ namespace MetaFort.Test_Control
 
             // Deferred generation to allow terrain load
             SpawnTestVillagers(3);
+
+            _eventBus.Subscribe<ItemCommandResultEvent>(OnItemCommandResult);
+            _eventBus.Subscribe<ContextActionSelectedEvent>(OnContextActionSelected);
+        }
+
+        private void OnItemCommandResult(ref ItemCommandResultEvent evt)
+        {
+            GD.Print($"[ControlTestVillager] Item command result -> success={evt.Success}, msg={evt.Message}");
+        }
+
+        private void OnContextActionSelected(ref ContextActionSelectedEvent evt)
+        {
+            if (evt.Selected.Type != ContextActionType.Move) return;
+
+            if (!_entityManager.IsAlive(evt.ActorEntityId))
+            {
+                GD.Print($"[ControlTestVillager] Move action ignored because actor {evt.ActorEntityId} is invalid.");
+                return;
+            }
+
+            CommandSelectedVillagersTo(evt.Selected.Target.X, evt.Selected.Target.Y, evt.Selected.Target.Z);
         }
 
         public override void _Process(double delta)
@@ -61,7 +106,7 @@ namespace MetaFort.Test_Control
                 if (mouseBtn.ButtonIndex == MouseButton.Left || mouseBtn.ButtonIndex == MouseButton.Right)
                 {
                     Vector2 globalMousePos = Visualizer.GetGlobalMousePosition();
-                    // 放弃粗暴除以32，改用神级原生 TileMapLayer.LocalToMap 取绝对网格，避免任何物理变形导致的网格错位
+                    Vector2 screenMousePos = mouseBtn.Position;
                     Vector2I mapGridPos = Visualizer.TargetTileMap.LocalToMap(Visualizer.TargetTileMap.ToLocal(globalMousePos));
                     int gridX = mapGridPos.X;
                     int gridY = mapGridPos.Y;
@@ -69,20 +114,17 @@ namespace MetaFort.Test_Control
 
                     if (mouseBtn.ButtonIndex == MouseButton.Left)
                     {
-                        // 左键选中脚底所在格子的小人
                         SelectVillagerAt(gridX, gridY, gridZ);
                     }
                     else if (mouseBtn.ButtonIndex == MouseButton.Right)
                     {
-                        // 右键指派移动
-                        CommandSelectedVillagersTo(gridX, gridY, gridZ);
+                        HandleContextActionAt(screenMousePos, gridX, gridY, gridZ);
                     }
                 }
             }
-            
+
             if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
             {
-                // 按下 T 键，在鼠标位置放一个临时梯子
                 if (keyEvent.Keycode == Key.T)
                 {
                     Vector2 mousePos = Visualizer.GetGlobalMousePosition();
@@ -91,7 +133,148 @@ namespace MetaFort.Test_Control
                     SpawnTempStair(gridX, gridY, CanvasRenderer.CurrentZLevel);
                     GD.Print($"[VillagerControl] Placed Temporary Stair at {gridX},{gridY},{CanvasRenderer.CurrentZLevel}");
                 }
+
+                if (keyEvent.Keycode == Key.I)
+                {
+                    uint actorId = GetPrimarySelectedVillager();
+                    if (actorId != uint.MaxValue && _itemSystem != null)
+                    {
+                        _itemSystem.PrintInventory(actorId);
+                    }
+                }
             }
+        }
+
+        private void HandleContextActionAt(Vector2 globalMousePos, int gridX, int gridY, int gridZ)
+        {
+            uint actorId = GetPrimarySelectedVillager();
+            if (actorId == uint.MaxValue)
+            {
+                GD.Print("[VillagerControl] No selected villager. Right click ignored.");
+                return;
+            }
+
+            GridPosition gp = new GridPosition(gridX, gridY, gridZ);
+            var options = BuildContextOptions(actorId, gp);
+
+            if (options.Count == 0)
+            {
+                GD.Print("[VillagerControl] No available actions at this location.");
+                return;
+            }
+
+            if (options.Count == 1)
+            {
+                ExecuteContextOption(actorId, options[0]);
+                return;
+            }
+
+            var req = new ContextActionMenuRequestEvent
+            {
+                ActorEntityId = actorId,
+                ScreenPosition = globalMousePos,
+                Options = options.ToArray()
+            };
+            _eventBus.Publish(ref req);
+        }
+
+        private List<ContextActionOption> BuildContextOptions(uint actorId, GridPosition gp)
+        {
+            var options = new List<ContextActionOption>();
+
+            // Default movement option
+            options.Add(new ContextActionOption
+            {
+                Type = ContextActionType.Move,
+                Label = $"Move to ({gp.X},{gp.Y},{gp.Z})",
+                ItemId = string.Empty,
+                Target = new Vector3I(gp.X, gp.Y, gp.Z)
+            });
+
+            if (_itemSystem != null)
+            {
+                // Craft options
+                if (_itemSystem.CanCraft(actorId, "build_ladder_wood"))
+                {
+                    options.Add(new ContextActionOption
+                    {
+                        Type = ContextActionType.Craft,
+                        Label = "Craft Wood Ladder",
+                        ItemId = "build_ladder_wood",
+                        Target = new Vector3I(gp.X, gp.Y, gp.Z)
+                    });
+                }
+
+                if (_itemSystem.CanCraft(actorId, "debug_bell"))
+                {
+                    options.Add(new ContextActionOption
+                    {
+                        Type = ContextActionType.Craft,
+                        Label = "Craft Debug Bell",
+                        ItemId = "debug_bell",
+                        Target = new Vector3I(gp.X, gp.Y, gp.Z)
+                    });
+                }
+
+                // Place options
+                if (_itemSystem.CanPlaceItem(actorId, "build_ladder_wood", gp))
+                {
+                    options.Add(new ContextActionOption
+                    {
+                        Type = ContextActionType.Place,
+                        Label = "Place Wood Ladder",
+                        ItemId = "build_ladder_wood",
+                        Target = new Vector3I(gp.X, gp.Y, gp.Z)
+                    });
+                }
+
+                if (_itemSystem.CanPlaceItem(actorId, "debug_bell", gp))
+                {
+                    options.Add(new ContextActionOption
+                    {
+                        Type = ContextActionType.Place,
+                        Label = "Place Debug Bell",
+                        ItemId = "debug_bell",
+                        Target = new Vector3I(gp.X, gp.Y, gp.Z)
+                    });
+                }
+
+                if (_itemSystem.HasInteractableAt(gp))
+                {
+                    options.Add(new ContextActionOption
+                    {
+                        Type = ContextActionType.Use,
+                        Label = "Use Item Here",
+                        ItemId = string.Empty,
+                        Target = new Vector3I(gp.X, gp.Y, gp.Z)
+                    });
+                }
+            }
+
+            return options;
+        }
+
+        private void ExecuteContextOption(uint actorId, ContextActionOption option)
+        {
+            if (option.Type == ContextActionType.Move)
+            {
+                CommandSelectedVillagersTo(option.Target.X, option.Target.Y, option.Target.Z);
+                return;
+            }
+
+            var selectedEvt = new ContextActionSelectedEvent
+            {
+                ActorEntityId = actorId,
+                Selected = option
+            };
+            _eventBus.Publish(ref selectedEvt);
+        }
+
+        private uint GetPrimarySelectedVillager()
+        {
+            ReadOnlySpan<uint> selectedIds = _entityManager.GetDenseEntityIds<PlayerSelectedComponent>();
+            if (selectedIds.Length == 0) return uint.MaxValue;
+            return selectedIds[0];
         }
 
         private void SpawnTestVillagers(int count)
@@ -108,11 +291,10 @@ namespace MetaFort.Test_Control
                 attempts++;
                 float startX = (_mapManager.Width / 2f) + rng.Next(-20, 20);
                 float startY = (_mapManager.Height / 2f) + rng.Next(-20, 20);
-                
+
                 int xInt = Mathf.Clamp(Mathf.RoundToInt(startX), 0, _mapManager.Width - 1);
                 int yInt = Mathf.Clamp(Mathf.RoundToInt(startY), 0, _mapManager.Height - 1);
 
-                // 自顶向下射线检测寻找真正的地表层
                 int foundZ = -1;
                 for (int z = _mapManager.Depth - 1; z > 0; z--)
                 {
@@ -131,26 +313,25 @@ namespace MetaFort.Test_Control
                     uint id = _entityManager.CreateEntity();
                     _entityManager.AddComponent(id, new MetaFort.Core.ECS.PositionComponent { X = xInt, Y = yInt, Z = startZ });
 
-                    // 赋予随机颜色
                     uint colorHex = (uint)GetRandomColor(rng).ToArgb32();
-                    _entityManager.AddComponent(id, new VillagerVisualComponent 
-                    { 
-                        HeadId = rng.Next(1, 4), 
-                        TorsoId = rng.Next(1, 4), 
-                        HairId = rng.Next(1, 4), 
+                    _entityManager.AddComponent(id, new VillagerVisualComponent
+                    {
+                        HeadId = rng.Next(1, 4),
+                        TorsoId = rng.Next(1, 4),
+                        HairId = rng.Next(1, 4),
                         ClothesId = rng.Next(1, 4),
                         SkinColorHex = colorHex
                     });
 
                     _entityManager.AddComponent(id, new VillagerStateComponent { CurrentAction = VillagerAction.Idle });
-                    
-                    _entityManager.AddComponent(id, new BiologicalComponent 
-                    { 
-                        Gender = (Godot.GD.Randf() > 0.5f) ? Gender.Male : Gender.Female, // Male or Female
-                        Hunger = 0f, 
-                        Stamina = 0f, 
-                        Sanity = 100f, 
-                        Libido = 0f 
+
+                    _entityManager.AddComponent(id, new BiologicalComponent
+                    {
+                        Gender = (Godot.GD.Randf() > 0.5f) ? Gender.Male : Gender.Female,
+                        Hunger = 0f,
+                        Stamina = 0f,
+                        Sanity = 100f,
+                        Libido = 0f
                     });
 
                     spawned++;
@@ -173,7 +354,6 @@ namespace MetaFort.Test_Control
 
         private void SelectVillagerAt(int x, int y, int z)
         {
-            // 清空现有选择
             ReadOnlySpan<uint> selectedIds = _entityManager.GetDenseEntityIds<PlayerSelectedComponent>();
             for (int i = selectedIds.Length - 1; i >= 0; i--)
             {
@@ -181,8 +361,6 @@ namespace MetaFort.Test_Control
             }
 
             bool found = false;
-
-            // 查找这格的小人并选中
             ReadOnlySpan<uint> entityIds = _entityManager.GetDenseEntityIds<MetaFort.Core.ECS.PositionComponent>();
             for (int i = 0; i < entityIds.Length; i++)
             {
@@ -192,7 +370,6 @@ namespace MetaFort.Test_Control
                     ref MetaFort.Core.ECS.PositionComponent pos = ref _entityManager.GetComponent<MetaFort.Core.ECS.PositionComponent>(id);
                     if ((int)pos.Z == z)
                     {
-                        // 判定鼠标点击的逻辑格子是否与小人脚部所在的绝对系统坐标系格子一致
                         if (Mathf.RoundToInt(pos.X) == x && Mathf.RoundToInt(pos.Y) == y)
                         {
                             _entityManager.AddComponent(id, new PlayerSelectedComponent());
@@ -206,20 +383,6 @@ namespace MetaFort.Test_Control
             if (!found)
             {
                 GD.Print($"[VillagerControl] (Left Click) Clicked terrain grid ({x},{y}). Selection cleared.");
-                GD.Print($"          >>> [Debug] 本层的活体小人 ECS 逻辑真实坐标分别位于：");
-
-                for (int i = 0; i < entityIds.Length; i++)
-                {
-                    uint id = entityIds[i];
-                    if (_entityManager.HasComponent<VillagerVisualComponent>(id))
-                    {
-                        ref MetaFort.Core.ECS.PositionComponent pos = ref _entityManager.GetComponent<MetaFort.Core.ECS.PositionComponent>(id);
-                        if ((int)pos.Z == z)
-                        {
-                            GD.Print($"             - 小人实体 [{id}] 真实站在了格子: X:{Mathf.RoundToInt(pos.X)}, Y:{Mathf.RoundToInt(pos.Y)}");
-                        }
-                    }
-                }
             }
         }
 
@@ -240,7 +403,6 @@ namespace MetaFort.Test_Control
                     state.TargetY = targetY;
                     state.TargetZ = targetZ;
 
-                    // 指派寻路系统开始动作 (通过发布事件代替直接调用引用)
                     var moveCmd = new MoveCommandEvent { EntityId = id, Target = new GridPosition(targetX, targetY, targetZ) };
                     _eventBus.Publish(ref moveCmd);
                 }

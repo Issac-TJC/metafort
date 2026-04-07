@@ -2,8 +2,35 @@
 
 [ext_resource type="Script" uid="uid://c5f0e0l0244s8" path="res://Scripts/GameEntry.cs" id="1_t7ssr"]
 [ext_resource type="PackedScene" uid="uid://da13vdybe33pk" path="res://scenes/components/terrain_visualizer.tscn" id="2_1vfbg"]
+[ext_resource type="Script" path="res://Scripts/Core/Items/ItemSystemNode.cs" id="3_item"]
+[ext_resource type="Script" path="res://Scripts/UI/ContextActionMenuUI.cs" id="4_menu"]
+[ext_resource type="Script" path="res://Scripts/Core/Systems/SimulationTimeNode.cs" id="5_time"]
+[ext_resource type="Script" path="res://Scripts/Core/Systems/WeatherSimulationNode.cs" id="6_weather"]
+[ext_resource type="Script" path="res://Scripts/Core/Systems/WeatherEffectOnItemNode.cs" id="7_weather_item"]
 
 [node name="test" type="Node" unique_id=1811413174]
 script = ExtResource("1_t7ssr")
 
 [node name="TerrainVisualizer2D" parent="." unique_id=712019728 instance=ExtResource("2_1vfbg")]
+CoreSourcePath = NodePath("..")
+
+[node name="ItemSystemNode" type="Node" parent="." unique_id=1811413175]
+script = ExtResource("3_item")
+CoreSourcePath = NodePath("..")
+
+[node name="ContextActionMenuUI" type="Node" parent="." unique_id=1811413176]
+script = ExtResource("4_menu")
+EventBusSourcePath = NodePath("..")
+
+[node name="SimulationTimeNode" type="Node" parent="." unique_id=1811413177]
+script = ExtResource("5_time")
+
+[node name="WeatherSimulationNode" type="Node" parent="." unique_id=1811413178]
+script = ExtResource("6_weather")
+CoreSourcePath = NodePath("..")
+TimeSourcePath = NodePath("../SimulationTimeNode")
+
+[node name="WeatherEffectOnItemNode" type="Node" parent="." unique_id=1811413179]
+script = ExtResource("7_weather_item")
+CoreSourcePath = NodePath("..")
+ItemSystemPath = NodePath("../ItemSystemNode")

@@ -11,6 +11,9 @@ namespace MetaFort.Visual
     public partial class TerrainVisualizer2D : Node2D
     {
         [Export]
+        public NodePath CoreSourcePath { get; set; }
+
+        [Export]
         public TileMapLayer TargetTileMap;
         
         [Export]
@@ -18,6 +21,18 @@ namespace MetaFort.Visual
 
         [Export]
         public int MaxCachedLayers = 6;
+
+        [Export(PropertyHint.Range, "0.1,4.0,0.01")]
+        public float InitialZoom = 0.8f;
+
+        [Export(PropertyHint.Range, "0.1,4.0,0.01")]
+        public float MinZoom = 0.45f;
+
+        [Export(PropertyHint.Range, "0.1,4.0,0.01")]
+        public float MaxZoom = 1.8f;
+
+        [Export(PropertyHint.Range, "0.01,1.0,0.01")]
+        public float ZoomStepFactor = 0.1f;
 
         private class LayerCacheItem
         {
@@ -47,9 +62,10 @@ namespace MetaFort.Visual
 
         public override void _Ready()
         {
-            if (GameEntry.Instance != null)
+            MetaFort.GameEntry gameEntry = ResolveGameEntry();
+            if (gameEntry != null)
             {
-                Initialize(GameEntry.Instance.MapManager, GameEntry.Instance.EventBus, GameEntry.Instance.VisionData);
+                Initialize(gameEntry.MapManager, gameEntry.EventBus, gameEntry.VisionData);
             }
         }
 
@@ -103,7 +119,8 @@ namespace MetaFort.Visual
             }
 
             _camera = new Camera2D();
-            _camera.Zoom = new Vector2(0.8f, 0.8f);
+            float clampedInitialZoom = Mathf.Clamp(InitialZoom, Math.Min(MinZoom, MaxZoom), Math.Max(MinZoom, MaxZoom));
+            _camera.Zoom = new Vector2(clampedInitialZoom, clampedInitialZoom);
             // 瓦片大小 32f
             _camera.Position = new Vector2((_mapManager.Width / 2f) * 32f, (_mapManager.Height / 2f) * 32f);
             AddChild(_camera);
@@ -412,12 +429,22 @@ namespace MetaFort.Visual
             {
                 if (mouseBtn.ButtonIndex == MouseButton.WheelUp)
                 {
-                    if (_camera != null) _camera.Zoom *= 1.1f;
+                    if (_camera != null)
+                    {
+                        float stepMultiplier = 1.0f + ZoomStepFactor;
+                        float nextZoom = _camera.Zoom.X * stepMultiplier;
+                        ApplyClampedZoom(nextZoom);
+                    }
                     return;
                 }
                 else if (mouseBtn.ButtonIndex == MouseButton.WheelDown)
                 {
-                    if (_camera != null) _camera.Zoom *= 0.9f;
+                    if (_camera != null)
+                    {
+                        float stepMultiplier = Mathf.Max(0.01f, 1.0f - ZoomStepFactor);
+                        float nextZoom = _camera.Zoom.X * stepMultiplier;
+                        ApplyClampedZoom(nextZoom);
+                    }
                     return;
                 }
             }
@@ -457,6 +484,29 @@ namespace MetaFort.Visual
             {
                 GD.PrintErr($"[Visualizer] Parse failed: {ex.Message}");
             }
+        }
+
+        private void ApplyClampedZoom(float zoomValue)
+        {
+            if (_camera == null)
+            {
+                return;
+            }
+
+            float minZoom = Math.Min(MinZoom, MaxZoom);
+            float maxZoom = Math.Max(MinZoom, MaxZoom);
+            float clampedZoom = Mathf.Clamp(zoomValue, minZoom, maxZoom);
+            _camera.Zoom = new Vector2(clampedZoom, clampedZoom);
+        }
+
+        private MetaFort.GameEntry ResolveGameEntry()
+        {
+            if (CoreSourcePath != null && !CoreSourcePath.IsEmpty)
+            {
+                return GetNodeOrNull<MetaFort.GameEntry>(CoreSourcePath);
+            }
+
+            return GetNodeOrNull<MetaFort.GameEntry>("../GameEntry") ?? MetaFort.GameEntry.Instance;
         }
     }
 }
