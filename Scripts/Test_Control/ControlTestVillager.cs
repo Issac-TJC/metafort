@@ -18,6 +18,12 @@ namespace MetaFort.Test_Control
         [Export]
         public MetaFort.Visual.VillagerCanvasRenderer CanvasRenderer;
 
+        [Export]
+        public NodePath CoreSourcePath { get; set; }
+
+        [Export]
+        public NodePath ItemSystemPath { get; set; }
+
         private IEntityManager _entityManager;
         private IMapManager _mapManager;
         private IEventBus _eventBus;
@@ -25,16 +31,29 @@ namespace MetaFort.Test_Control
 
         public override void _Ready()
         {
-            if (GameEntry.Instance != null)
+            Node coreSource = GetNodeOrNull(CoreSourcePath);
+            if (coreSource is MetaFort.GameEntry gameEntry)
             {
-                _entityManager = GameEntry.Instance.EntityManager;
-                _mapManager = GameEntry.Instance.MapManager;
-                _eventBus = GameEntry.Instance.EventBus;
-                _itemSystem = GameEntry.Instance.ItemSystem;
+                _entityManager = gameEntry.EntityManager;
+                _mapManager = gameEntry.MapManager;
+                _eventBus = gameEntry.EventBus;
             }
             else
             {
-                GD.PrintErr("[ControlTestVillager] GameEntry not found! Sandboxed operation aborted.");
+                GD.PrintErr($"[ControlTestVillager] CoreSourcePath '{CoreSourcePath}' must point to a GameEntry node.");
+                return;
+            }
+
+            _itemSystem = GetNodeOrNull<ItemSystemNode>(ItemSystemPath);
+            if (_itemSystem == null)
+            {
+                GD.PrintErr($"[ControlTestVillager] ItemSystemPath '{ItemSystemPath}' must point to an ItemSystemNode.");
+                return;
+            }
+
+            if (_entityManager == null || _mapManager == null || _eventBus == null)
+            {
+                GD.PrintErr("[ControlTestVillager] GameEntry core systems are not ready. Sandboxed operation aborted.");
                 return;
             }
 
@@ -87,6 +106,7 @@ namespace MetaFort.Test_Control
                 if (mouseBtn.ButtonIndex == MouseButton.Left || mouseBtn.ButtonIndex == MouseButton.Right)
                 {
                     Vector2 globalMousePos = Visualizer.GetGlobalMousePosition();
+                    Vector2 screenMousePos = mouseBtn.Position;
                     Vector2I mapGridPos = Visualizer.TargetTileMap.LocalToMap(Visualizer.TargetTileMap.ToLocal(globalMousePos));
                     int gridX = mapGridPos.X;
                     int gridY = mapGridPos.Y;
@@ -98,7 +118,7 @@ namespace MetaFort.Test_Control
                     }
                     else if (mouseBtn.ButtonIndex == MouseButton.Right)
                     {
-                        HandleContextActionAt(globalMousePos, gridX, gridY, gridZ);
+                        HandleContextActionAt(screenMousePos, gridX, gridY, gridZ);
                     }
                 }
             }

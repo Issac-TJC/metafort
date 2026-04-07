@@ -42,13 +42,14 @@ namespace MetaFort.Core.Data
         public static TerrainGenerationConfig TerrainGeneration { get; private set; }
         public static Dictionary<ushort, TerrainTypeConfig> TerrainTypes { get; private set; }
 
-        public static void LoadAllConfigs()
+        public static bool LoadAllConfigs()
         {
-            LoadTerrainConfig();
-            ItemConfigManager.LoadItemConfig();
+            bool terrainLoaded = LoadTerrainConfig();
+            bool itemsLoaded = ItemConfigManager.LoadItemConfig();
+            return terrainLoaded && itemsLoaded;
         }
 
-        private static void LoadTerrainConfig()
+        private static bool LoadTerrainConfig()
         {
             string path = "res://assets/config/terrain_config.json";
             string globalPath = ProjectSettings.GlobalizePath(path);
@@ -56,21 +57,40 @@ namespace MetaFort.Core.Data
             if (!File.Exists(globalPath))
             {
                 GD.PrintErr($"[ConfigManager] Missing config file: {globalPath}");
-                return;
+                return false;
             }
 
-            string json = File.ReadAllText(globalPath);
-            var root = JsonSerializer.Deserialize<TerrainConfigRoot>(json);
-            
-            TerrainGeneration = root.terrain.generation;
-            TerrainTypes = new Dictionary<ushort, TerrainTypeConfig>();
-            
-            foreach(var type in root.terrain.types)
+            try
             {
-                TerrainTypes[type.id] = type;
+                string json = File.ReadAllText(globalPath);
+                var root = JsonSerializer.Deserialize<TerrainConfigRoot>(json);
+                if (root?.terrain?.generation == null || root.terrain.types == null)
+                {
+                    GD.PrintErr("[ConfigManager] Terrain config is missing required sections.");
+                    return false;
+                }
+
+                TerrainGeneration = root.terrain.generation;
+                TerrainTypes = new Dictionary<ushort, TerrainTypeConfig>();
+
+                foreach (var type in root.terrain.types)
+                {
+                    TerrainTypes[type.id] = type;
+                }
+
+                GD.Print($"[ConfigManager] Loaded {TerrainTypes.Count} terrain types configuration.");
+                return true;
             }
-            
-            GD.Print($"[ConfigManager] Loaded {TerrainTypes.Count} terrain types configuration.");
+            catch (JsonException ex)
+            {
+                GD.PrintErr($"[ConfigManager] Invalid terrain config JSON: {ex.Message}");
+                return false;
+            }
+            catch (System.Exception ex)
+            {
+                GD.PrintErr($"[ConfigManager] Failed to load terrain config: {ex.Message}");
+                return false;
+            }
         }
         
         public static byte GetDefaultHealth(ushort typeId)

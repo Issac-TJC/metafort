@@ -18,20 +18,27 @@ namespace MetaFort.Core.Systems
         private float _timeSinceLastUpdate = 0f;
         private float _updateInterval = 0.1f; // 10Hz
         private bool _forceUpdateNextTick = true;
+        private int _lastVisibilitySourceSignature;
+        private GameEventHandler<MetaFort.Core.Spatial.TerrainModifiedEvent> _terrainModifiedHandler;
 
         public void Initialize(IEntityManager entityManager, IEventBus eventBus)
         {
+            Initialize(entityManager, eventBus, null, null);
+        }
+
+        public void Initialize(IEntityManager entityManager, IEventBus eventBus, IMapManager mapManager, IVisionDataSystem visionDataSystem)
+        {
             _entityManager = entityManager;
             _eventBus = eventBus;
-            _mapManager = GameEntry.Instance?.MapManager;
-            _visionDataSystem = GameEntry.Instance?.VisionData;
+            _mapManager = mapManager;
+            _visionDataSystem = visionDataSystem;
 
             if (_eventBus != null)
             {
-                GameEventHandler<MetaFort.Core.Spatial.TerrainModifiedEvent> handler = (ref MetaFort.Core.Spatial.TerrainModifiedEvent e) => {
+                _terrainModifiedHandler = (ref MetaFort.Core.Spatial.TerrainModifiedEvent e) => {
                     _forceUpdateNextTick = true;
                 };
-                _eventBus.Subscribe(handler);
+                _eventBus.Subscribe(_terrainModifiedHandler);
             }
         }
 
@@ -48,11 +55,28 @@ namespace MetaFort.Core.Systems
             _timeSinceLastUpdate += (float)deltaTime;
             
             // 只要超过 0.1秒 或是被触发砖块修改事件，立即全量计算
-            if (_timeSinceLastUpdate >= _updateInterval || _forceUpdateNextTick)
+            if (_timeSinceLastUpdate < _updateInterval && !_forceUpdateNextTick)
             {
-                _timeSinceLastUpdate = 0f;
-                _forceUpdateNextTick = false;
-                CalculateGlobalVisibility();
+                return;
+            }
+
+            _timeSinceLastUpdate = 0f;
+            int currentSignature = BuildVisibilitySourceSignature();
+            if (!_forceUpdateNextTick && currentSignature == _lastVisibilitySourceSignature)
+            {
+                return;
+            }
+
+            _lastVisibilitySourceSignature = currentSignature;
+            _forceUpdateNextTick = false;
+            CalculateGlobalVisibility();
+        }
+
+        public void Shutdown()
+        {
+            if (_eventBus != null && _terrainModifiedHandler != null)
+            {
+                _eventBus.Unsubscribe(_terrainModifiedHandler);
             }
         }
 
@@ -90,6 +114,28 @@ namespace MetaFort.Core.Systems
                     _visionDataSystem.SetVisibilitiesAndDiff(z, new HashSet<Vector2I>(), out _, out _, out _);
                 }
             }
+        }
+
+        private int BuildVisibilitySourceSignature()
+        {
+            HashCode hash = new HashCode();
+            ReadOnlySpan<uint> entityIds = _entityManager.GetDenseEntityIds<MetaFort.Core.ECS.PositionComponent>();
+            for (int i = 0; i < entityIds.Length; i++)
+            {
+                uint id = entityIds[i];
+                if (!_entityManager.HasComponent<VillagerVisualComponent>(id))
+                {
+                    continue;
+                }
+
+                ref MetaFort.Core.ECS.PositionComponent pos = ref _entityManager.GetComponent<MetaFort.Core.ECS.PositionComponent>(id);
+                hash.Add(id);
+                hash.Add(Mathf.RoundToInt(pos.X));
+                hash.Add(Mathf.RoundToInt(pos.Y));
+                hash.Add(Mathf.RoundToInt(pos.Z));
+            }
+
+            return hash.ToHashCode();
         }
 
         /// <summary>

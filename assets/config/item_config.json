@@ -1,60 +1,99 @@
 {
   "items": [
-    {
-      "id": "res_wood",
-      "displayName": "Wood",
-      "maxDurability": 1,
-      "hardness": 1,
-      "blocksVision": false,
-      "blocksMovement": false,
-      "footprintX": 1,
-      "footprintY": 1,
-      "placementFlags": 0,
-      "occupiedOffsets": [
-        { "x": 0, "y": 0, "z": 0 }
-      ],
-      "requiredMaterials": [],
-      "texturePath": "res://assets/Textures/Things/Item/Resource/Dbiz.png",
-      "interactionScript": ""
-    },
-    {
-      "id": "build_ladder_wood",
-      "displayName": "Wood Ladder",
-      "maxDurability": 120,
-      "hardness": 15,
-      "blocksVision": false,
-      "blocksMovement": false,
-      "footprintX": 1,
-      "footprintY": 1,
-      "placementFlags": 3,
-      "occupiedOffsets": [
-        { "x": 0, "y": 0, "z": 0 }
-      ],
-      "requiredMaterials": [
-        { "itemId": "res_wood", "count": 4 }
-      ],
-      "texturePath": "res://assets/Textures/Things/Item/Resource/Dwool.png",
-      "interactionScript": "LadderBehavior"
-    },
-    {
-      "id": "debug_bell",
-      "displayName": "Debug Bell",
-      "maxDurability": 80,
-      "hardness": 5,
-      "blocksVision": false,
-      "blocksMovement": false,
-      "footprintX": 2,
-      "footprintY": 1,
-      "placementFlags": 1,
-      "occupiedOffsets": [
-        { "x": 0, "y": 0, "z": 0 },
-        { "x": 1, "y": 0, "z": 0 }
-      ],
-      "requiredMaterials": [
-        { "itemId": "res_wood", "count": 2 }
-      ],
-      "texturePath": "res://assets/Textures/Things/Item/Resource/Dhorn.png",
-      "interactionScript": "DebugBellBehavior"
-    }
+	{
+	  "id": "res_wood",
+	  "displayName": "Wood",
+	  "maxDurability": 1,
+	  "maxCondition": 24,
+	  "failureThreshold": 4,
+	  "hardness": 1,
+	  "blocksVision": false,
+	  "blocksMovement": false,
+	  "footprintX": 1,
+	  "footprintY": 1,
+	  "placementFlags": 0,
+	  "occupiedOffsets": [
+		{ "x": 0, "y": 0, "z": 0 }
+	  ],
+	  "requiredMaterials": [],
+	  "isBuildable": false,
+	  "buildCategory": "Resource",
+	  "plannerLabel": "Wood",
+	  "materialType": "Organic",
+	  "decayMode": "WetFirstThenRot",
+	  "baseDecayRate": 0.18,
+	  "weatherSensitivity": 1.35,
+	  "moistureSensitivity": 1.9,
+	  "temperatureSensitivity": 0.7,
+	  "thermalShockSensitivity": 0.8,
+	  "lightningSensitivity": 0.75,
+	  "texturePath": "res://assets/Textures/Things/Item/Resource/Dbiz.png",
+	  "interactionScript": ""
+	},
+	{
+	  "id": "build_ladder_wood",
+	  "displayName": "Wood Ladder",
+	  "maxDurability": 120,
+	  "maxCondition": 120,
+	  "failureThreshold": 24,
+	  "hardness": 15,
+	  "blocksVision": false,
+	  "blocksMovement": false,
+	  "footprintX": 1,
+	  "footprintY": 1,
+	  "placementFlags": 3,
+	  "occupiedOffsets": [
+		{ "x": 0, "y": 0, "z": 0 }
+	  ],
+	  "requiredMaterials": [
+		{ "itemId": "res_wood", "count": 4 }
+	  ],
+	  "isBuildable": true,
+	  "buildCategory": "Transit",
+	  "plannerLabel": "Wood Ladder",
+	  "materialType": "Wood",
+	  "decayMode": "WetFirstThenRot",
+	  "baseDecayRate": 0.07,
+	  "weatherSensitivity": 1.2,
+	  "moistureSensitivity": 1.75,
+	  "temperatureSensitivity": 0.65,
+	  "thermalShockSensitivity": 1.1,
+	  "lightningSensitivity": 0.8,
+	  "texturePath": "res://assets/Textures/Things/Item/Resource/Dwool.png",
+	  "interactionScript": "LadderBehavior"
+	},
+	{
+	  "id": "debug_bell",
+	  "displayName": "Debug Bell",
+	  "maxDurability": 80,
+	  "maxCondition": 80,
+	  "failureThreshold": 12,
+	  "hardness": 5,
+	  "blocksVision": false,
+	  "blocksMovement": false,
+	  "footprintX": 2,
+	  "footprintY": 1,
+	  "placementFlags": 1,
+	  "occupiedOffsets": [
+		{ "x": 0, "y": 0, "z": 0 },
+		{ "x": 1, "y": 0, "z": 0 }
+	  ],
+	  "requiredMaterials": [
+		{ "itemId": "res_wood", "count": 2 }
+	  ],
+	  "isBuildable": true,
+	  "buildCategory": "Utility",
+	  "plannerLabel": "Debug Bell",
+	  "materialType": "Metal",
+	  "decayMode": "RustLike",
+	  "baseDecayRate": 0.035,
+	  "weatherSensitivity": 0.95,
+	  "moistureSensitivity": 0.95,
+	  "temperatureSensitivity": 0.8,
+	  "thermalShockSensitivity": 0.7,
+	  "lightningSensitivity": 1.6,
+	  "texturePath": "res://assets/Textures/Things/Item/Resource/Dhorn.png",
+	  "interactionScript": "DebugBellBehavior"
+	}
   ]
 }
