@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using MetaFort.Core.Heat;
 
 namespace MetaFort.Core.Items
 {
@@ -74,6 +76,9 @@ namespace MetaFort.Core.Items
         public bool isBuildable { get; set; }
         public string buildCategory { get; set; } = "Misc";
         public string plannerLabel { get; set; }
+        public bool showInStockpile { get; set; }
+        public int stockpileOrder { get; set; }
+        public string stockpileLabel { get; set; }
         public string materialType { get; set; } = ItemMaterialType.Composite.ToString();
         public string decayMode { get; set; } = ItemDecayMode.Linear.ToString();
         public float? baseDecayRate { get; set; }
@@ -84,6 +89,15 @@ namespace MetaFort.Core.Items
         public float? lightningSensitivity { get; set; }
         public float? maxCondition { get; set; }
         public float? failureThreshold { get; set; }
+        public string thermalProfileId { get; set; } = string.Empty;
+        public float? baseHeatOutput { get; set; }
+        public float? baseExhaustOutput { get; set; }
+        public int? heatEmissionRadiusXY { get; set; }
+        public int? heatEmissionRiseZ { get; set; }
+        public int? heatEmissionDownZ { get; set; }
+        public float? heatEmissionFalloff { get; set; }
+        public bool? emitsWhenBroken { get; set; }
+        public List<string> heatTags { get; set; } = new List<string>();
 
         public PlacementRuleFlags GetPlacementFlags() => (PlacementRuleFlags)placementFlags;
 
@@ -183,6 +197,32 @@ namespace MetaFort.Core.Items
             : ResolveMaxCondition() * 0.20f;
         public string ResolvePlannerLabel() => string.IsNullOrWhiteSpace(plannerLabel) ? displayName : plannerLabel;
         public string ResolveBuildCategory() => string.IsNullOrWhiteSpace(buildCategory) ? "Misc" : buildCategory;
+        public string ResolveStockpileLabel() => string.IsNullOrWhiteSpace(stockpileLabel) ? displayName : stockpileLabel;
+        public ThermalProfileDefinition ResolveThermalProfile()
+        {
+            return ThermalConfigManager.TryGetProfile(thermalProfileId, out ThermalProfileDefinition profile)
+                ? profile
+                : null;
+        }
+
+        public float ResolveBaseHeatOutput() => baseHeatOutput ?? ResolveThermalProfile()?.baseHeatOutput ?? 0f;
+        public float ResolveBaseExhaustOutput() => baseExhaustOutput ?? ResolveThermalProfile()?.baseExhaustOutput ?? 0f;
+        public int ResolveHeatEmissionRadiusXY() => Math.Max(0, heatEmissionRadiusXY ?? ResolveThermalProfile()?.heatEmissionRadiusXY ?? 0);
+        public int ResolveHeatEmissionRiseZ() => Math.Max(0, heatEmissionRiseZ ?? ResolveThermalProfile()?.heatEmissionRiseZ ?? 0);
+        public int ResolveHeatEmissionDownZ() => Math.Max(0, heatEmissionDownZ ?? ResolveThermalProfile()?.heatEmissionDownZ ?? 0);
+        public float ResolveHeatEmissionFalloff() => Math.Max(0.01f, heatEmissionFalloff ?? ResolveThermalProfile()?.heatEmissionFalloff ?? 1f);
+        public float ResolveUpwardBias() => Math.Max(0.01f, ResolveThermalProfile()?.upwardBias ?? 1.25f);
+        public float ResolveDownwardMultiplier() => Math.Clamp(ResolveThermalProfile()?.downwardMultiplier ?? 0.35f, 0f, 4f);
+        public bool ResolveEmitsWhenBroken() => emitsWhenBroken ?? ResolveThermalProfile()?.emitsWhenBroken ?? false;
+        public IReadOnlyList<string> ResolveHeatTags()
+        {
+            List<string> resolved = heatTags != null && heatTags.Count > 0
+                ? heatTags
+                : ResolveThermalProfile()?.heatTags;
+            return resolved?.Where(tag => !string.IsNullOrWhiteSpace(tag)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                ?? Array.Empty<string>();
+        }
+        public bool EmitsIndustrialSignature() => ResolveBaseHeatOutput() > 0f || ResolveBaseExhaustOutput() > 0f;
     }
 
     public class ItemConfigRoot

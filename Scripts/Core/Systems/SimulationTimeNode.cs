@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using MetaFort.Core.EventBus;
+using MetaFort.Core.EventBus.Events;
 
 namespace MetaFort.Core.Systems
 {
@@ -42,6 +43,28 @@ namespace MetaFort.Core.Systems
             }
         }
 
+        public void SetTimeScale(float newTimeScale)
+        {
+            float clamped = Mathf.Clamp(newTimeScale, 0f, 3f);
+            if (Mathf.IsEqualApprox(TimeScale, clamped))
+            {
+                return;
+            }
+
+            float previous = TimeScale;
+            TimeScale = clamped;
+
+            if (_eventBus != null)
+            {
+                var evt = new SimulationSpeedChangedEvent
+                {
+                    PreviousTimeScale = previous,
+                    CurrentTimeScale = TimeScale
+                };
+                _eventBus.Publish(ref evt);
+            }
+        }
+
         public override void _Process(double delta)
         {
             float dt = (float)delta;
@@ -71,6 +94,43 @@ namespace MetaFort.Core.Systems
                         _eventBus.Publish(ref e);
                     }
                 }
+            }
+        }
+
+        public override void _Input(InputEvent @event)
+        {
+            HandleSpeedShortcut(@event);
+        }
+
+        public override void _UnhandledInput(InputEvent @event)
+        {
+            HandleSpeedShortcut(@event);
+        }
+
+        private void HandleSpeedShortcut(InputEvent @event)
+        {
+            if (@event is not InputEventKey keyEvent || !keyEvent.Pressed || keyEvent.Echo)
+            {
+                return;
+            }
+
+            switch (keyEvent.Keycode)
+            {
+                case Key.Key1:
+                case Key.Kp1:
+                    SetTimeScale(1.0f);
+                    GetViewport().SetInputAsHandled();
+                    break;
+                case Key.Key2:
+                case Key.Kp2:
+                    SetTimeScale(2.0f);
+                    GetViewport().SetInputAsHandled();
+                    break;
+                case Key.Key3:
+                case Key.Kp3:
+                    SetTimeScale(3.0f);
+                    GetViewport().SetInputAsHandled();
+                    break;
             }
         }
     }

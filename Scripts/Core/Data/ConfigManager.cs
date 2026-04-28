@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Collections.Generic;
 using Godot;
 using MetaFort.Core.Items;
+using MetaFort.Core.Heat;
+using MetaFort.Core.Enemy;
 
 namespace MetaFort.Core.Data
 {
@@ -14,6 +16,11 @@ namespace MetaFort.Core.Data
         public int depthLayerMin { get; set; }
         public int depthLayerMax { get; set; }
         public bool blocksVision { get; set; } = true;
+        public bool canDig { get; set; } = true;
+        public string primaryDropItemId { get; set; } = string.Empty;
+        public int primaryDropCount { get; set; }
+        public string secondaryDropItemId { get; set; } = string.Empty;
+        public int secondaryDropCount { get; set; }
     }
 
     public class TerrainGenerationConfig
@@ -45,8 +52,10 @@ namespace MetaFort.Core.Data
         public static bool LoadAllConfigs()
         {
             bool terrainLoaded = LoadTerrainConfig();
+            bool thermalLoaded = ThermalConfigManager.LoadThermalConfig();
             bool itemsLoaded = ItemConfigManager.LoadItemConfig();
-            return terrainLoaded && itemsLoaded;
+            bool enemyLoaded = EnemyConfigManager.LoadEnemyConfig();
+            return terrainLoaded && thermalLoaded && itemsLoaded && enemyLoaded;
         }
 
         private static bool LoadTerrainConfig()
@@ -111,6 +120,12 @@ namespace MetaFort.Core.Data
                 // But if the JSON does provide it later, it will be respected if set to false (assuming we modify json).
             }
             return true;
+        }
+
+        public static bool TryGetTerrainTypeConfig(ushort typeId, out TerrainTypeConfig config)
+        {
+            config = null;
+            return TerrainTypes != null && TerrainTypes.TryGetValue(typeId, out config);
         }
     }
 }

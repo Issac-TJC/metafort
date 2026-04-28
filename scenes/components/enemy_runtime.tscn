@@ -1,0 +1,32 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://Scripts/Core/Heat/HeatFieldNode.cs" id="1_heat"]
+[ext_resource type="Script" path="res://Scripts/Core/Enemy/EnemySystemNode.cs" id="2_enemy"]
+[ext_resource type="Script" path="res://Scripts/Visual/EnemyCanvasRenderer.cs" id="3_enemy_renderer"]
+[ext_resource type="Texture2D" path="res://assets/Textures/Things/Dragonian/Bodies/Naked_Male_south.png" id="4_body"]
+[ext_resource type="Texture2D" path="res://assets/Textures/Things/Dragonian/Heads/Male_Average_south.png" id="5_head"]
+[ext_resource type="Texture2D" path="res://assets/Textures/Apparel/dummy/DR_BattleHelm_south.png" id="6_shell"]
+
+[node name="EnemyRuntime" type="Node"]
+
+[node name="HeatFieldNode" type="Node" parent="."]
+script = ExtResource("1_heat")
+CoreSourcePath = NodePath("../..")
+ItemSystemPath = NodePath("../../ItemSystemNode")
+
+[node name="EnemySystemNode" type="Node" parent="."]
+script = ExtResource("2_enemy")
+CoreSourcePath = NodePath("../..")
+HeatFieldPath = NodePath("../HeatFieldNode")
+StockpilePath = NodePath("../../PlayerStockpileNode")
+
+[node name="EnemyCanvasRenderer" type="Node2D" parent="."]
+script = ExtResource("3_enemy_renderer")
+CoreSourcePath = NodePath("../..")
+TorsoTextures = Array[Texture2D]([ExtResource("4_body")])
+HeadTextures = Array[Texture2D]([ExtResource("5_head")])
+ClothesTextures = Array[Texture2D]([])
+HairTextures = Array[Texture2D]([ExtResource("6_shell")])
+CharacterScale = 0.6
+HeadOffset = Vector2(0, -16)
+HairOffset = Vector2(0, -12)

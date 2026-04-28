@@ -1,0 +1,34 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://Scripts/Core/Items/ItemSystemNode.cs" id="1_item"]
+[ext_resource type="Script" path="res://Scripts/Core/Systems/PlayerStockpileNode.cs" id="2_stockpile"]
+[ext_resource type="Script" path="res://Scripts/Core/Systems/SimulationTimeNode.cs" id="3_time"]
+[ext_resource type="Script" path="res://Scripts/Core/Heat/HeatFieldNode.cs" id="4_heat"]
+[ext_resource type="Script" path="res://Scripts/Core/Enemy/EnemySystemNode.cs" id="5_enemy"]
+
+[node name="TestEnemyStateRuntime" type="Node"]
+
+[node name="ItemSystemNode" type="Node" parent="."]
+script = ExtResource("1_item")
+CoreSourcePath = NodePath("../..")
+
+[node name="PlayerStockpileNode" type="Node" parent="."]
+script = ExtResource("2_stockpile")
+CoreSourcePath = NodePath("../..")
+SeedDebugResources = false
+
+[node name="SimulationTimeNode" type="Node" parent="."]
+script = ExtResource("3_time")
+Day = 0
+Hour = 0
+
+[node name="HeatFieldNode" type="Node" parent="."]
+script = ExtResource("4_heat")
+CoreSourcePath = NodePath("../..")
+ItemSystemPath = NodePath("../ItemSystemNode")
+
+[node name="EnemySystemNode" type="Node" parent="."]
+script = ExtResource("5_enemy")
+CoreSourcePath = NodePath("../..")
+HeatFieldPath = NodePath("../HeatFieldNode")
+StockpilePath = NodePath("../PlayerStockpileNode")

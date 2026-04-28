@@ -13,20 +13,6 @@ namespace MetaFort.Test_Control
 {
     public partial class PlanningControlTestVillager : Node2D
     {
-        private enum ControlMode
-        {
-            Normal,
-            BuildingPlacement
-        }
-
-        private sealed class PendingBuildAssignment
-        {
-            public uint ActorEntityId;
-            public int BlueprintId;
-            public string ItemId;
-            public GridPosition Anchor;
-        }
-
         [Export]
         public MetaFort.Visual.TerrainVisualizer2D Visualizer;
 
@@ -45,21 +31,26 @@ namespace MetaFort.Test_Control
         [Export]
         public NodePath PlannerUiPath { get; set; }
 
+        [Export]
+        public NodePath DesignationSystemPath { get; set; }
+
+        [Export]
+        public NodePath StockpilePath { get; set; }
+
         private IEntityManager _entityManager;
         private IMapManager _mapManager;
         private IEventBus _eventBus;
         private ItemSystemNode _itemSystem;
         private ConstructionBlueprintSystemNode _blueprintSystem;
         private BuildingPlannerPanel _plannerUi;
+        private CommandDesignationNode _designationSystem;
+        private PlayerStockpileNode _stockpile;
 
-        private ControlMode _mode;
-        private string _activeBuildItemId = string.Empty;
+        private MapCursorModeState _cursorMode;
         private bool _hasHoverGrid;
         private GridPosition _hoverGrid;
         private int _lastVisualizerZ = int.MinValue;
         private bool _redrawRequested = true;
-
-        private readonly Dictionary<uint, PendingBuildAssignment> _pendingAssignments = new Dictionary<uint, PendingBuildAssignment>();
 
         private const float TileSize = 32f;
 
@@ -81,10 +72,12 @@ namespace MetaFort.Test_Control
             _itemSystem = GetNodeOrNull<ItemSystemNode>(ItemSystemPath);
             _blueprintSystem = GetNodeOrNull<ConstructionBlueprintSystemNode>(BlueprintSystemPath);
             _plannerUi = GetNodeOrNull<BuildingPlannerPanel>(PlannerUiPath);
+            _designationSystem = GetNodeOrNull<CommandDesignationNode>(DesignationSystemPath);
+            _stockpile = GetNodeOrNull<PlayerStockpileNode>(StockpilePath);
 
-            if (_itemSystem == null || _blueprintSystem == null || _plannerUi == null)
+            if (_itemSystem == null || _blueprintSystem == null || _plannerUi == null || _designationSystem == null || _stockpile == null)
             {
-                GD.PrintErr("[PlanningControlTestVillager] Missing ItemSystem, BlueprintSystem, or BuildingPlannerUI.");
+                GD.PrintErr("[PlanningControlTestVillager] Missing ItemSystem, BlueprintSystem, BuildingPlannerUI, DesignationSystem, or Stockpile.");
                 return;
             }
 
@@ -103,12 +96,13 @@ namespace MetaFort.Test_Control
 
             _eventBus.Subscribe<ItemCommandResultEvent>(OnItemCommandResult);
             _eventBus.Subscribe<ContextActionSelectedEvent>(OnContextActionSelected);
-            _eventBus.Subscribe<ConstructionBlueprintCommandEvent>(OnConstructionBlueprintCommand);
             _eventBus.Subscribe<ConstructionBlueprintCompletedEvent>(OnConstructionBlueprintCompleted);
             _eventBus.Subscribe<ConstructionBlueprintPlacedEvent>(OnBlueprintPlaced);
             _eventBus.Subscribe<ConstructionBlueprintCancelledEvent>(OnBlueprintCancelled);
-            _eventBus.Subscribe<BuildPlannerItemSelectedEvent>(OnBuildPlannerItemSelected);
-            _eventBus.Subscribe<BuildPlannerPlacementCancelledEvent>(OnBuildPlannerPlacementCancelled);
+            _eventBus.Subscribe<MapCursorModeRequestEvent>(OnMapCursorModeRequested);
+            _eventBus.Subscribe<DigDesignationChangedEvent>(OnDigDesignationChanged);
+            _eventBus.Subscribe<DemolishDesignationChangedEvent>(OnDemolishDesignationChanged);
+            _eventBus.Subscribe<PlacedItemRemovedEvent>(OnPlacedItemRemoved);
         }
 
         public override void _ExitTree()
@@ -117,39 +111,58 @@ namespace MetaFort.Test_Control
             {
                 _eventBus.Unsubscribe<ItemCommandResultEvent>(OnItemCommandResult);
                 _eventBus.Unsubscribe<ContextActionSelectedEvent>(OnContextActionSelected);
-                _eventBus.Unsubscribe<ConstructionBlueprintCommandEvent>(OnConstructionBlueprintCommand);
                 _eventBus.Unsubscribe<ConstructionBlueprintCompletedEvent>(OnConstructionBlueprintCompleted);
                 _eventBus.Unsubscribe<ConstructionBlueprintPlacedEvent>(OnBlueprintPlaced);
                 _eventBus.Unsubscribe<ConstructionBlueprintCancelledEvent>(OnBlueprintCancelled);
-                _eventBus.Unsubscribe<BuildPlannerItemSelectedEvent>(OnBuildPlannerItemSelected);
-                _eventBus.Unsubscribe<BuildPlannerPlacementCancelledEvent>(OnBuildPlannerPlacementCancelled);
+                _eventBus.Unsubscribe<MapCursorModeRequestEvent>(OnMapCursorModeRequested);
+                _eventBus.Unsubscribe<DigDesignationChangedEvent>(OnDigDesignationChanged);
+                _eventBus.Unsubscribe<DemolishDesignationChangedEvent>(OnDemolishDesignationChanged);
+                _eventBus.Unsubscribe<PlacedItemRemovedEvent>(OnPlacedItemRemoved);
             }
         }
 
-        private void OnBuildPlannerItemSelected(ref BuildPlannerItemSelectedEvent evt)
+        private void OnDigDesignationChanged(ref DigDesignationChangedEvent evt)
         {
-            OnBuildItemSelected(evt.ItemId);
-        }
-
-        private void OnBuildPlannerPlacementCancelled(ref BuildPlannerPlacementCancelledEvent evt)
-        {
-            CancelPlacementMode();
-        }
-
-        private void OnBuildItemSelected(string itemId)
-        {
-            _activeBuildItemId = itemId ?? string.Empty;
-            _mode = string.IsNullOrEmpty(_activeBuildItemId) ? ControlMode.Normal : ControlMode.BuildingPlacement;
-            _plannerUi?.SetPlacementState(_mode == ControlMode.BuildingPlacement, _activeBuildItemId);
             RequestOverlayRedraw();
         }
 
-        private void CancelPlacementMode()
+        private void OnDemolishDesignationChanged(ref DemolishDesignationChangedEvent evt)
         {
-            _mode = ControlMode.Normal;
-            _activeBuildItemId = string.Empty;
-            _plannerUi?.SetPlacementState(false, string.Empty);
             RequestOverlayRedraw();
+        }
+
+        private void OnPlacedItemRemoved(ref PlacedItemRemovedEvent evt)
+        {
+            RequestOverlayRedraw();
+        }
+
+        private void OnMapCursorModeRequested(ref MapCursorModeRequestEvent evt)
+        {
+            SetCursorMode(evt.Mode);
+        }
+
+        private void SetCursorMode(MapCursorModeState mode)
+        {
+            bool changed = _cursorMode.Kind != mode.Kind
+                || _cursorMode.ItemId != mode.ItemId
+                || _cursorMode.MarkerKey != mode.MarkerKey
+                || _cursorMode.DisplayLabel != mode.DisplayLabel;
+
+            _cursorMode = mode;
+
+            if (!changed)
+            {
+                return;
+            }
+
+            var changedEvent = new MapCursorModeChangedEvent { Mode = _cursorMode };
+            _eventBus.Publish(ref changedEvent);
+            RequestOverlayRedraw();
+        }
+
+        private void ClearCursorMode()
+        {
+            SetCursorMode(new MapCursorModeState { Kind = MapCursorModeKind.None });
         }
 
         private void OnItemCommandResult(ref ItemCommandResultEvent evt)
@@ -180,7 +193,7 @@ namespace MetaFort.Test_Control
                 case ContextActionType.Move:
                     if (_entityManager.IsAlive(evt.ActorEntityId))
                     {
-                        CommandSelectedVillagersTo(evt.Selected.Target.X, evt.Selected.Target.Y, evt.Selected.Target.Z);
+                        CommandSelectedVillagersTo(evt.Selected.ResolvedTarget.X, evt.Selected.ResolvedTarget.Y, evt.Selected.ResolvedTarget.Z);
                     }
                     break;
                 case ContextActionType.BuildBlueprint:
@@ -196,12 +209,35 @@ namespace MetaFort.Test_Control
                         _eventBus.Publish(ref buildCommand);
                     }
                     break;
+                case ContextActionType.DigDesignationWork:
+                    var digRequest = new VillagerWorkRequestEvent
+                    {
+                        ActorEntityId = evt.ActorEntityId,
+                        WorkType = VillagerWorkType.Dig,
+                        Target = new GridPosition(evt.Selected.Target.X, evt.Selected.Target.Y, evt.Selected.Target.Z),
+                        ResolvedTarget = new GridPosition(evt.Selected.ResolvedTarget.X, evt.Selected.ResolvedTarget.Y, evt.Selected.ResolvedTarget.Z),
+                        DigTargetKind = evt.Selected.DigTargetKind
+                    };
+                    _eventBus.Publish(ref digRequest);
+                    break;
+                case ContextActionType.DemolishDesignationWork:
+                    var demolishRequest = new VillagerWorkRequestEvent
+                    {
+                        ActorEntityId = evt.ActorEntityId,
+                        WorkType = VillagerWorkType.Demolish,
+                        Target = new GridPosition(evt.Selected.Target.X, evt.Selected.Target.Y, evt.Selected.Target.Z),
+                        ResolvedTarget = new GridPosition(evt.Selected.ResolvedTarget.X, evt.Selected.ResolvedTarget.Y, evt.Selected.ResolvedTarget.Z),
+                        PayloadId = evt.Selected.PayloadId
+                    };
+                    _eventBus.Publish(ref demolishRequest);
+                    break;
+                case ContextActionType.CancelDigDesignation:
+                    _designationSystem?.RemoveDigDesignation(new GridPosition(evt.Selected.ResolvedTarget.X, evt.Selected.ResolvedTarget.Y, evt.Selected.ResolvedTarget.Z));
+                    break;
+                case ContextActionType.CancelDemolishDesignation:
+                    _designationSystem?.RemoveDemolishDesignation(new GridPosition(evt.Selected.ResolvedTarget.X, evt.Selected.ResolvedTarget.Y, evt.Selected.ResolvedTarget.Z));
+                    break;
             }
-        }
-
-        private void OnConstructionBlueprintCommand(ref ConstructionBlueprintCommandEvent evt)
-        {
-            BeginBuildAssignment(evt.ActorEntityId, evt.BlueprintId, evt.BlueprintAnchor);
         }
 
         public override void _Process(double delta)
@@ -218,7 +254,6 @@ namespace MetaFort.Test_Control
             }
 
             UpdateHoverGrid();
-            MonitorPendingAssignments();
             if (_redrawRequested)
             {
                 _redrawRequested = false;
@@ -232,9 +267,12 @@ namespace MetaFort.Test_Control
 
             if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
             {
-                if (keyEvent.Keycode == Key.Escape && _mode == ControlMode.BuildingPlacement)
+                if (keyEvent.Keycode == Key.Escape)
                 {
-                    CancelPlacementMode();
+                    if (_cursorMode.Kind != MapCursorModeKind.None)
+                    {
+                        ClearCursorMode();
+                    }
                     return;
                 }
 
@@ -250,10 +288,12 @@ namespace MetaFort.Test_Control
 
                 if (keyEvent.Keycode == Key.I)
                 {
-                    uint actorId = GetPrimarySelectedVillager();
-                    if (actorId != uint.MaxValue && _itemSystem != null)
+                    if (_stockpile != null)
                     {
-                        _itemSystem.PrintInventory(actorId);
+                        foreach (StockpileEntryData entry in _stockpile.GetDisplayEntries())
+                        {
+                            GD.Print($"[PlanningControlTestVillager][Stockpile] {entry.Label} -> {entry.Count}");
+                        }
                     }
                 }
             }
@@ -270,15 +310,15 @@ namespace MetaFort.Test_Control
             int gridY = mapGridPos.Y;
             int gridZ = CanvasRenderer.CurrentZLevel;
 
-            if (_mode == ControlMode.BuildingPlacement)
+            if (_cursorMode.Kind != MapCursorModeKind.None)
             {
                 if (mouseBtn.ButtonIndex == MouseButton.Left)
                 {
-                    TryPlaceBlueprint(gridX, gridY, gridZ);
+                    ApplyCursorModeAt(screenMousePos, gridX, gridY, gridZ);
                 }
                 else if (mouseBtn.ButtonIndex == MouseButton.Right)
                 {
-                    CancelPlacementMode();
+                    ClearCursorMode();
                 }
                 return;
             }
@@ -296,7 +336,10 @@ namespace MetaFort.Test_Control
         public override void _Draw()
         {
             DrawBlueprints();
+            DrawDesignations();
             DrawPlacementPreview();
+            DrawCommandPreview();
+            DrawCommandMarker();
         }
 
         private void UpdateHoverGrid()
@@ -333,16 +376,16 @@ namespace MetaFort.Test_Control
 
         private void TryPlaceBlueprint(int gridX, int gridY, int gridZ)
         {
-            if (string.IsNullOrEmpty(_activeBuildItemId))
+            if (string.IsNullOrEmpty(_cursorMode.ItemId))
             {
                 return;
             }
 
             GridPosition anchor = new GridPosition(gridX, gridY, gridZ);
             uint actorId = GetPrimarySelectedVillager();
-            if (_blueprintSystem.TryPlaceBlueprint(_activeBuildItemId, anchor, actorId == uint.MaxValue ? 0 : actorId, out int blueprintId, out string failureReason))
+            if (_blueprintSystem.TryPlaceBlueprint(_cursorMode.ItemId, anchor, actorId == uint.MaxValue ? 0 : actorId, out int blueprintId, out string failureReason))
             {
-                GD.Print($"[PlanningControlTestVillager] Placed blueprint {blueprintId} for {_activeBuildItemId} at {anchor}");
+                GD.Print($"[PlanningControlTestVillager] Placed blueprint {blueprintId} for {_cursorMode.ItemId} at {anchor}");
                 RequestOverlayRedraw();
             }
             else
@@ -351,197 +394,234 @@ namespace MetaFort.Test_Control
             }
         }
 
+        private void ApplyCursorModeAt(Vector2 screenMousePos, int gridX, int gridY, int gridZ)
+        {
+            switch (_cursorMode.Kind)
+            {
+                case MapCursorModeKind.BuildBlueprint:
+                    TryPlaceBlueprint(gridX, gridY, gridZ);
+                    break;
+                case MapCursorModeKind.DigDesignation:
+                case MapCursorModeKind.DemolishDesignation:
+                    TryPlaceDesignation(gridX, gridY, gridZ);
+                    break;
+                case MapCursorModeKind.CancelDesignation:
+                    TryCancelDesignationAt(screenMousePos, gridX, gridY, gridZ);
+                    break;
+            }
+        }
+
+        private void TryPlaceDesignation(int gridX, int gridY, int gridZ)
+        {
+            if (_designationSystem == null)
+            {
+                return;
+            }
+
+            GridPosition target = new GridPosition(gridX, gridY, gridZ);
+            switch (_cursorMode.Kind)
+            {
+                case MapCursorModeKind.DigDesignation:
+                    if (_designationSystem.TryPlaceDigDesignation(target, out string digFailure))
+                    {
+                        GD.Print($"[PlanningControlTestVillager] Toggled dig designation from {target}");
+                    }
+                    else
+                    {
+                        GD.Print($"[PlanningControlTestVillager] Dig designation blocked: {digFailure}");
+                    }
+                    break;
+
+                case MapCursorModeKind.DemolishDesignation:
+                    if (_designationSystem.TryPlaceDemolishDesignation(target, out string demolishFailure))
+                    {
+                        GD.Print($"[PlanningControlTestVillager] Toggled demolish designation at {target}");
+                    }
+                    else
+                    {
+                        GD.Print($"[PlanningControlTestVillager] Demolish designation blocked: {demolishFailure}");
+                    }
+                    break;
+            }
+
+            RequestOverlayRedraw();
+        }
+
         private void HandleCommandAt(Vector2 screenMousePos, int gridX, int gridY, int gridZ)
         {
             GridPosition gp = new GridPosition(gridX, gridY, gridZ);
             uint actorId = GetPrimarySelectedVillager();
-
-            if (_blueprintSystem.TryGetBlueprintAt(gp, out var blueprint))
+            List<ContextActionOption> options = BuildContextOptions(actorId, gp);
+            if (options.Count == 0)
             {
                 if (actorId == uint.MaxValue)
                 {
-                    GD.Print($"[PlanningControlTestVillager] Blueprint '{blueprint.ItemId}' is waiting for a builder at {gp}.");
-                    return;
+                    GD.Print("[PlanningControlTestVillager] No selected villager. Right click ignored.");
                 }
-
-                if (!ItemConfigManager.TryGetItem(blueprint.ItemId, out ItemDefinition def))
-                {
-                    return;
-                }
-
-                ContextActionOption option = new ContextActionOption
-                {
-                    Type = ContextActionType.BuildBlueprint,
-                    Label = $"Build {def.ResolvePlannerLabel()}",
-                    ItemId = blueprint.ItemId,
-                    Target = new Vector3I(gp.X, gp.Y, gp.Z)
-                };
-                ExecuteContextOption(actorId, option, screenMousePos);
                 return;
             }
 
-            if (_itemSystem != null && _itemSystem.HasInteractableAt(gp))
+            if (options.Count == 1)
             {
-                if (actorId == uint.MaxValue)
-                {
-                    GD.Print("[PlanningControlTestVillager] Select a villager before using an object.");
-                    return;
-                }
-
-                ContextActionOption option = new ContextActionOption
-                {
-                    Type = ContextActionType.Use,
-                    Label = "Use Item Here",
-                    ItemId = string.Empty,
-                    Target = new Vector3I(gp.X, gp.Y, gp.Z)
-                };
-                ExecuteContextOption(actorId, option, screenMousePos);
-                return;
-            }
-
-            if (actorId == uint.MaxValue)
-            {
-                GD.Print("[PlanningControlTestVillager] No selected villager. Right click ignored.");
-                return;
-            }
-
-            ContextActionOption moveOption = new ContextActionOption
-            {
-                Type = ContextActionType.Move,
-                Label = $"Move to ({gp.X},{gp.Y},{gp.Z})",
-                ItemId = string.Empty,
-                Target = new Vector3I(gp.X, gp.Y, gp.Z)
-            };
-            ExecuteContextOption(actorId, moveOption, screenMousePos);
-        }
-
-        private void ExecuteContextOption(uint actorId, ContextActionOption option, Vector2 screenPosition)
-        {
-            if (option.Type == ContextActionType.Move)
-            {
-                CommandSelectedVillagersTo(option.Target.X, option.Target.Y, option.Target.Z);
+                PublishContextSelection(actorId, options[0]);
                 return;
             }
 
             var request = new ContextActionMenuRequestEvent
             {
                 ActorEntityId = actorId,
-                ScreenPosition = screenPosition,
-                Options = new[] { option }
+                ScreenPosition = screenMousePos,
+                Options = options.ToArray()
             };
             _eventBus.Publish(ref request);
         }
 
-        private void BeginBuildAssignment(uint actorId, int blueprintId, GridPosition anchor)
+        private List<ContextActionOption> BuildContextOptions(uint actorId, GridPosition clickedCell)
         {
-            if (!_entityManager.IsAlive(actorId))
+            List<ContextActionOption> options = new List<ContextActionOption>();
+
+            if (actorId != uint.MaxValue && _blueprintSystem.TryGetBlueprintAt(clickedCell, out ConstructionBlueprintSystemNode.BlueprintRecord blueprint))
             {
-                GD.Print($"[PlanningControlTestVillager] Build command ignored because actor {actorId} is invalid.");
+                if (ItemConfigManager.TryGetItem(blueprint.ItemId, out ItemDefinition def))
+                {
+                    options.Add(new ContextActionOption
+                    {
+                        Type = ContextActionType.BuildBlueprint,
+                        Label = $"Build {def.ResolvePlannerLabel()}",
+                        ItemId = blueprint.ItemId,
+                        Target = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z),
+                        ResolvedTarget = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z)
+                    });
+                }
+            }
+
+            if (actorId != uint.MaxValue
+                && _designationSystem != null
+                && _designationSystem.TryGetDigDesignationAtDisplayCell(clickedCell, out _, out DigTargetResolution digResolution))
+            {
+                options.Add(new ContextActionOption
+                {
+                    Type = ContextActionType.DigDesignationWork,
+                    Label = digResolution.Kind == DigTargetKind.Floor ? "Dig Floor" : "Dig Wall",
+                    ItemId = string.Empty,
+                    Target = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z),
+                    ResolvedTarget = new Vector3I(digResolution.ResolvedTarget.X, digResolution.ResolvedTarget.Y, digResolution.ResolvedTarget.Z),
+                    DigTargetKind = digResolution.Kind
+                });
+            }
+
+            if (actorId != uint.MaxValue
+                && _designationSystem != null
+                && _designationSystem.TryGetDemolishDesignation(clickedCell, out CommandDesignationNode.DemolishDesignation demolishDesignation))
+            {
+                options.Add(new ContextActionOption
+                {
+                    Type = ContextActionType.DemolishDesignationWork,
+                    Label = "Demolish",
+                    ItemId = demolishDesignation.ItemId,
+                    PayloadId = demolishDesignation.ItemId,
+                    Target = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z),
+                    ResolvedTarget = new Vector3I(demolishDesignation.Anchor.X, demolishDesignation.Anchor.Y, demolishDesignation.Anchor.Z)
+                });
+            }
+
+            if (actorId != uint.MaxValue && _itemSystem != null && _itemSystem.HasInteractableAt(clickedCell))
+            {
+                options.Add(new ContextActionOption
+                {
+                    Type = ContextActionType.Use,
+                    Label = "Use Item Here",
+                    ItemId = string.Empty,
+                    Target = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z),
+                    ResolvedTarget = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z)
+                });
+            }
+
+            if (actorId != uint.MaxValue)
+            {
+                options.Add(new ContextActionOption
+                {
+                    Type = ContextActionType.Move,
+                    Label = $"Move to ({clickedCell.X},{clickedCell.Y},{clickedCell.Z})",
+                    ItemId = string.Empty,
+                    Target = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z),
+                    ResolvedTarget = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z)
+                });
+            }
+
+            return options;
+        }
+
+        private void TryCancelDesignationAt(Vector2 screenMousePos, int gridX, int gridY, int gridZ)
+        {
+            GridPosition clickedCell = new GridPosition(gridX, gridY, gridZ);
+            List<ContextActionOption> options = BuildCancelDesignationOptions(clickedCell);
+            if (options.Count == 0)
+            {
+                GD.Print("[PlanningControlTestVillager] No designation to cancel at this tile.");
                 return;
             }
 
-            if (!_blueprintSystem.TryGetBlueprint(blueprintId, out var blueprint))
+            if (options.Count == 1)
             {
-                GD.Print("[PlanningControlTestVillager] Blueprint no longer exists.");
+                PublishContextSelection(0, options[0]);
                 return;
             }
 
-            if (!_blueprintSystem.TryAssignBuilder(blueprintId, actorId, out string failureReason))
+            var request = new ContextActionMenuRequestEvent
             {
-                GD.Print($"[PlanningControlTestVillager] Cannot assign builder: {failureReason}");
+                ActorEntityId = 0,
+                ScreenPosition = screenMousePos,
+                Options = options.ToArray()
+            };
+            _eventBus.Publish(ref request);
+        }
+
+        private List<ContextActionOption> BuildCancelDesignationOptions(GridPosition clickedCell)
+        {
+            List<ContextActionOption> options = new List<ContextActionOption>();
+
+            if (_designationSystem != null && _designationSystem.TryGetDigDesignationAtDisplayCell(clickedCell, out _, out DigTargetResolution digResolution))
+            {
+                options.Add(new ContextActionOption
+                {
+                    Type = ContextActionType.CancelDigDesignation,
+                    Label = digResolution.Kind == DigTargetKind.Floor ? "Cancel Dig Floor" : "Cancel Dig Wall",
+                    Target = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z),
+                    ResolvedTarget = new Vector3I(digResolution.ResolvedTarget.X, digResolution.ResolvedTarget.Y, digResolution.ResolvedTarget.Z),
+                    DigTargetKind = digResolution.Kind
+                });
+            }
+
+            if (_designationSystem != null && _designationSystem.TryGetDemolishDesignation(clickedCell, out CommandDesignationNode.DemolishDesignation demolishDesignation))
+            {
+                options.Add(new ContextActionOption
+                {
+                    Type = ContextActionType.CancelDemolishDesignation,
+                    Label = "Cancel Demolish",
+                    Target = new Vector3I(clickedCell.X, clickedCell.Y, clickedCell.Z),
+                    ResolvedTarget = new Vector3I(demolishDesignation.Anchor.X, demolishDesignation.Anchor.Y, demolishDesignation.Anchor.Z),
+                    PayloadId = demolishDesignation.ItemId
+                });
+            }
+
+            return options;
+        }
+
+        private void PublishContextSelection(uint actorId, ContextActionOption option)
+        {
+            if (option.Type == ContextActionType.Move)
+            {
+                CommandSelectedVillagersTo(option.ResolvedTarget.X, option.ResolvedTarget.Y, option.ResolvedTarget.Z);
                 return;
             }
 
-            if (_pendingAssignments.TryGetValue(actorId, out var existing))
-            {
-                _blueprintSystem.ClearAssignment(existing.BlueprintId);
-            }
-
-            _pendingAssignments[actorId] = new PendingBuildAssignment
+            var selected = new ContextActionSelectedEvent
             {
                 ActorEntityId = actorId,
-                BlueprintId = blueprintId,
-                ItemId = blueprint.ItemId,
-                Anchor = anchor
+                Selected = option
             };
-
-            ref VillagerStateComponent state = ref _entityManager.GetComponent<VillagerStateComponent>(actorId);
-            state.CurrentAction = VillagerAction.Building;
-            state.TargetX = anchor.X;
-            state.TargetY = anchor.Y;
-            state.TargetZ = anchor.Z;
-
-            var moveCmd = new MoveCommandEvent
-            {
-                EntityId = actorId,
-                Target = anchor
-            };
-            _eventBus.Publish(ref moveCmd);
-            GD.Print($"[PlanningControlTestVillager] Builder {actorId} assigned to blueprint {blueprintId} at {anchor}");
-            RequestOverlayRedraw();
-        }
-
-        private void MonitorPendingAssignments()
-        {
-            if (_pendingAssignments.Count == 0)
-            {
-                return;
-            }
-
-            List<uint> actors = new List<uint>(_pendingAssignments.Keys);
-            for (int i = 0; i < actors.Count; i++)
-            {
-                uint actorId = actors[i];
-                PendingBuildAssignment assignment = _pendingAssignments[actorId];
-
-                if (!_entityManager.IsAlive(actorId))
-                {
-                    _blueprintSystem.ClearAssignment(assignment.BlueprintId);
-                    _pendingAssignments.Remove(actorId);
-                    continue;
-                }
-
-                if (!_blueprintSystem.TryGetBlueprint(assignment.BlueprintId, out _))
-                {
-                    _pendingAssignments.Remove(actorId);
-                    continue;
-                }
-
-                if (!IsEntityNear(actorId, assignment.Anchor))
-                {
-                    continue;
-                }
-
-                _blueprintSystem.MarkBlueprintBuilding(assignment.BlueprintId, actorId);
-                if (_itemSystem.TryCompleteBlueprintBuild(actorId, assignment.ItemId, assignment.Anchor, out string message))
-                {
-                    _blueprintSystem.TryCompleteBlueprintBuild(assignment.BlueprintId, actorId);
-                    GD.Print($"[PlanningControlTestVillager] {message}");
-                }
-                else
-                {
-                    _blueprintSystem.ClearAssignment(assignment.BlueprintId);
-                    GD.Print($"[PlanningControlTestVillager] Build failed: {message}");
-                }
-
-                ref VillagerStateComponent state = ref _entityManager.GetComponent<VillagerStateComponent>(actorId);
-                state.CurrentAction = VillagerAction.Idle;
-                _pendingAssignments.Remove(actorId);
-                RequestOverlayRedraw();
-            }
-        }
-
-        private bool IsEntityNear(uint actorId, GridPosition anchor)
-        {
-            if (!_entityManager.HasComponent<MetaFort.Core.ECS.PositionComponent>(actorId))
-            {
-                return false;
-            }
-
-            ref MetaFort.Core.ECS.PositionComponent pos = ref _entityManager.GetComponent<MetaFort.Core.ECS.PositionComponent>(actorId);
-            return Mathf.RoundToInt(pos.X) == anchor.X
-                && Mathf.RoundToInt(pos.Y) == anchor.Y
-                && Mathf.RoundToInt(pos.Z) == anchor.Z;
+            _eventBus.Publish(ref selected);
         }
 
         private void DrawBlueprints()
@@ -581,13 +661,13 @@ namespace MetaFort.Test_Control
 
         private void DrawPlacementPreview()
         {
-            if (_mode != ControlMode.BuildingPlacement || string.IsNullOrEmpty(_activeBuildItemId) || !_hasHoverGrid || _itemSystem == null || _blueprintSystem == null)
+            if (_cursorMode.Kind != MapCursorModeKind.BuildBlueprint || string.IsNullOrEmpty(_cursorMode.ItemId) || !_hasHoverGrid || _itemSystem == null || _blueprintSystem == null)
             {
                 return;
             }
 
-            List<GridPosition> previewCells = _itemSystem.GetOccupiedCellsForItem(_activeBuildItemId, _hoverGrid);
-            bool canPlace = _blueprintSystem.CanPlaceBlueprint(_activeBuildItemId, _hoverGrid, out _);
+            List<GridPosition> previewCells = _itemSystem.GetOccupiedCellsForItem(_cursorMode.ItemId, _hoverGrid);
+            bool canPlace = _blueprintSystem.CanPlaceBlueprint(_cursorMode.ItemId, _hoverGrid, out _);
             Color fill = canPlace ? new Color(0.45f, 1f, 0.55f, 0.22f) : new Color(1f, 0.35f, 0.35f, 0.24f);
             Color outline = canPlace ? new Color(0.55f, 1f, 0.65f, 1f) : new Color(1f, 0.45f, 0.45f, 1f);
 
@@ -600,6 +680,105 @@ namespace MetaFort.Test_Control
 
                 DrawGridCellOverlay(previewCells[i], fill, outline);
             }
+        }
+
+        private void DrawDesignations()
+        {
+            if (_designationSystem == null || CanvasRenderer == null)
+            {
+                return;
+            }
+
+            foreach (CommandDesignationNode.DigDesignation designation in _designationSystem.EnumerateDigDesignations())
+            {
+                if (designation.PreviewCell.Z != CanvasRenderer.CurrentZLevel)
+                {
+                    continue;
+                }
+
+                DrawGridCellOverlay(designation.PreviewCell, new Color(1f, 0.75f, 0.15f, 0.24f), new Color(1f, 0.85f, 0.2f, 0.95f));
+            }
+
+            foreach (CommandDesignationNode.DemolishDesignation designation in _designationSystem.EnumerateDemolishDesignations())
+            {
+                if (!_itemSystem.TryGetPlacedItemRecord(designation.Anchor, out ItemSystemNode.PlacedItemRecord record))
+                {
+                    continue;
+                }
+
+                List<GridPosition> occupiedCells = _itemSystem.GetOccupiedCellsForItem(record.ItemId, designation.Anchor);
+                for (int i = 0; i < occupiedCells.Count; i++)
+                {
+                    if (occupiedCells[i].Z != CanvasRenderer.CurrentZLevel)
+                    {
+                        continue;
+                    }
+
+                    DrawGridCellOverlay(occupiedCells[i], new Color(1f, 0.2f, 0.2f, 0.18f), new Color(1f, 0.3f, 0.3f, 0.95f));
+                }
+            }
+        }
+
+        private void DrawCommandPreview()
+        {
+            if (!_hasHoverGrid || _designationSystem == null || CanvasRenderer == null)
+            {
+                return;
+            }
+
+            switch (_cursorMode.Kind)
+            {
+                case MapCursorModeKind.DigDesignation:
+                    if (_designationSystem.TryResolveDigTarget(_hoverGrid, out DigTargetResolution digResolution)
+                        && _mapManager.IsWithinBounds(digResolution.ResolvedTarget)
+                        && digResolution.PreviewCell.Z == CanvasRenderer.CurrentZLevel)
+                    {
+                        DrawGridCellOverlay(digResolution.PreviewCell, new Color(1f, 0.95f, 0.35f, 0.12f), new Color(1f, 0.95f, 0.35f, 0.9f));
+                    }
+                    break;
+
+                case MapCursorModeKind.DemolishDesignation:
+                    if (_itemSystem.TryGetPlacedItemAnchor(_hoverGrid, out GridPosition anchor) && _itemSystem.TryGetPlacedItemRecord(anchor, out ItemSystemNode.PlacedItemRecord record))
+                    {
+                        List<GridPosition> occupiedCells = _itemSystem.GetOccupiedCellsForItem(record.ItemId, anchor);
+                        for (int i = 0; i < occupiedCells.Count; i++)
+                        {
+                            if (occupiedCells[i].Z != CanvasRenderer.CurrentZLevel)
+                            {
+                                continue;
+                            }
+
+                            DrawGridCellOverlay(occupiedCells[i], new Color(1f, 0.45f, 0.45f, 0.14f), new Color(1f, 0.45f, 0.45f, 0.92f));
+                        }
+                    }
+                    break;
+
+                case MapCursorModeKind.CancelDesignation:
+                    List<ContextActionOption> cancelOptions = BuildCancelDesignationOptions(_hoverGrid);
+                    for (int i = 0; i < cancelOptions.Count; i++)
+                    {
+                        Vector3I target = cancelOptions[i].Target;
+                        DrawGridCellOverlay(new GridPosition(target.X, target.Y, target.Z), new Color(0.9f, 0.25f, 0.9f, 0.14f), new Color(0.95f, 0.35f, 0.95f, 0.92f));
+                    }
+                    break;
+            }
+        }
+
+        private void DrawCommandMarker()
+        {
+            if (_designationSystem == null || _cursorMode.Kind == MapCursorModeKind.None || string.IsNullOrWhiteSpace(_cursorMode.MarkerKey))
+            {
+                return;
+            }
+
+            Font font = ThemeDB.FallbackFont;
+            if (font == null || Visualizer == null)
+            {
+                return;
+            }
+
+            Vector2 drawPos = ToLocal(Visualizer.GetGlobalMousePosition()) + new Vector2(10f, -10f);
+            DrawString(font, drawPos, _cursorMode.MarkerKey);
         }
 
         private void DrawGridCellOverlay(GridPosition cell, Color fill, Color outline)
@@ -734,6 +913,12 @@ namespace MetaFort.Test_Control
 
         private void CommandSelectedVillagersTo(int targetX, int targetY, int targetZ)
         {
+            if (!TryClampMoveTarget(targetX, targetY, targetZ, out GridPosition clampedTarget))
+            {
+                GD.Print("[PlanningControlTestVillager] Move command ignored because target is outside the map.");
+                return;
+            }
+
             int selectedCount = _entityManager.GetComponentCount<PlayerSelectedComponent>();
             if (selectedCount == 0) return;
 
@@ -745,21 +930,36 @@ namespace MetaFort.Test_Control
                 {
                     ref VillagerStateComponent state = ref _entityManager.GetComponent<VillagerStateComponent>(id);
                     state.CurrentAction = VillagerAction.Moving;
-                    state.TargetX = targetX;
-                    state.TargetY = targetY;
-                    state.TargetZ = targetZ;
+                    state.TargetX = clampedTarget.X;
+                    state.TargetY = clampedTarget.Y;
+                    state.TargetZ = clampedTarget.Z;
 
-                    var moveCmd = new MoveCommandEvent { EntityId = id, Target = new GridPosition(targetX, targetY, targetZ) };
+                    var moveCmd = new MoveCommandEvent { EntityId = id, Target = clampedTarget };
                     _eventBus.Publish(ref moveCmd);
                 }
             }
 
-            GD.Print($"[PlanningControlTestVillager] Commanded {selectedCount} units to {targetX},{targetY},{targetZ}");
+            GD.Print($"[PlanningControlTestVillager] Commanded {selectedCount} units to {clampedTarget.X},{clampedTarget.Y},{clampedTarget.Z}");
         }
 
         private void RequestOverlayRedraw()
         {
             _redrawRequested = true;
+        }
+
+        private bool TryClampMoveTarget(int targetX, int targetY, int targetZ, out GridPosition target)
+        {
+            target = default;
+            if (_mapManager == null || _mapManager.Width <= 0 || _mapManager.Height <= 0 || _mapManager.Depth <= 0)
+            {
+                return false;
+            }
+
+            int clampedX = Mathf.Clamp(targetX, 0, _mapManager.Width - 1);
+            int clampedY = Mathf.Clamp(targetY, 0, _mapManager.Height - 1);
+            int clampedZ = Mathf.Clamp(targetZ, 0, _mapManager.Depth - 1);
+            target = new GridPosition(clampedX, clampedY, clampedZ);
+            return _mapManager.IsWithinBounds(target);
         }
     }
 }

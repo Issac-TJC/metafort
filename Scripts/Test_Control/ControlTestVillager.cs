@@ -388,6 +388,12 @@ namespace MetaFort.Test_Control
 
         private void CommandSelectedVillagersTo(int targetX, int targetY, int targetZ)
         {
+            if (!TryClampMoveTarget(targetX, targetY, targetZ, out GridPosition clampedTarget))
+            {
+                GD.Print("[VillagerControl] Move command ignored because target is outside the map.");
+                return;
+            }
+
             int selectedCount = _entityManager.GetComponentCount<PlayerSelectedComponent>();
             if (selectedCount == 0) return;
 
@@ -399,16 +405,31 @@ namespace MetaFort.Test_Control
                 {
                     ref VillagerStateComponent state = ref _entityManager.GetComponent<VillagerStateComponent>(id);
                     state.CurrentAction = VillagerAction.Moving;
-                    state.TargetX = targetX;
-                    state.TargetY = targetY;
-                    state.TargetZ = targetZ;
+                    state.TargetX = clampedTarget.X;
+                    state.TargetY = clampedTarget.Y;
+                    state.TargetZ = clampedTarget.Z;
 
-                    var moveCmd = new MoveCommandEvent { EntityId = id, Target = new GridPosition(targetX, targetY, targetZ) };
+                    var moveCmd = new MoveCommandEvent { EntityId = id, Target = clampedTarget };
                     _eventBus.Publish(ref moveCmd);
                 }
             }
 
-            GD.Print($"[VillagerControl] Commanded {selectedCount} units to {targetX},{targetY},{targetZ}");
+            GD.Print($"[VillagerControl] Commanded {selectedCount} units to {clampedTarget.X},{clampedTarget.Y},{clampedTarget.Z}");
+        }
+
+        private bool TryClampMoveTarget(int targetX, int targetY, int targetZ, out GridPosition target)
+        {
+            target = default;
+            if (_mapManager == null || _mapManager.Width <= 0 || _mapManager.Height <= 0 || _mapManager.Depth <= 0)
+            {
+                return false;
+            }
+
+            int clampedX = Mathf.Clamp(targetX, 0, _mapManager.Width - 1);
+            int clampedY = Mathf.Clamp(targetY, 0, _mapManager.Height - 1);
+            int clampedZ = Mathf.Clamp(targetZ, 0, _mapManager.Depth - 1);
+            target = new GridPosition(clampedX, clampedY, clampedZ);
+            return _mapManager.IsWithinBounds(target);
         }
     }
 }

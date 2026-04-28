@@ -5,6 +5,8 @@
 
 [node name="TestSandbox" type="Node2D" unique_id=515997206]
 script = ExtResource("1_ewn84")
+DefaultMapWidth = 150
+DefaultMapHeight = 150
 
 [node name="TerrainVisualizer2D" parent="." unique_id=712019728 instance=ExtResource("1_pqsad")]
 IgnoreVision = true

@@ -7,20 +7,12 @@
 [ext_resource type="Script" uid="uid://brxlbyibbr5fr" path="res://Scripts/Test_Control/PlanningControlTestVillager.cs" id="4_ne40w"]
 [ext_resource type="Texture2D" uid="uid://ii03y2m32662" path="res://assets/Textures/Head/Female_Average_Normal_south.png" id="4_y8xeh"]
 [ext_resource type="Texture2D" uid="uid://li741bn2b5yy" path="res://assets/Textures/Hair/DR_Japan_south.png" id="5_w37wx"]
-[ext_resource type="Script" uid="uid://bmjegd3oowstq" path="res://Scripts/Core/Items/ItemSystemNode.cs" id="6_item"]
-[ext_resource type="Script" uid="uid://bu5wv4qn4ciyw" path="res://Scripts/UI/ContextActionMenuUI.cs" id="7_menu"]
-[ext_resource type="Script" uid="uid://dknt628gh85re" path="res://Scripts/Core/Systems/SimulationTimeNode.cs" id="8_u68w1"]
-[ext_resource type="Script" uid="uid://bn4ay11d1v1s6" path="res://Scripts/Core/Systems/BioSystemNode.cs" id="9_g8rjk"]
-[ext_resource type="Script" uid="uid://b5rrxb6rj8svj" path="res://Scripts/Test_Control/VillagerBioDebugNode.cs" id="10_1d0lr"]
-[ext_resource type="Script" uid="uid://be0aolbofxnvb" path="res://Scripts/Core/Systems/WeatherSimulationNode.cs" id="11_weather"]
-[ext_resource type="Script" uid="uid://5so13oc17ooj" path="res://Scripts/Core/Systems/WeatherEffectOnItemNode.cs" id="12_weather_item"]
-[ext_resource type="Script" uid="uid://cnwjw5bb1rir8" path="res://Scripts/Core/Items/ConstructionBlueprintSystemNode.cs" id="13_blueprint"]
-[ext_resource type="Script" uid="uid://dtma4nyu0oxau" path="res://Scripts/UI/BuildingPlannerPanel.cs" id="14_planner"]
+[ext_resource type="PackedScene" path="res://scenes/components/test_villager_runtime.tscn" id="6_runtime"]
 
 [node name="VillagerTestScene" type="Node2D" unique_id=2060398983]
 script = ExtResource("1_7xy0m")
-DefaultMapWidth = 200
-DefaultMapHeight = 200
+DefaultMapWidth = 160
+DefaultMapHeight = 160
 
 [node name="VillagerCanvasRenderer" type="Node2D" parent="." unique_id=1390215624]
 z_index = 5
@@ -39,54 +31,15 @@ CoreSourcePath = NodePath("..")
 MinZoom = 0.11
 MaxZoom = 2.27
 
-[node name="ItemSystemNode" type="Node" parent="." unique_id=2020011001]
-script = ExtResource("6_item")
-CoreSourcePath = NodePath("..")
-
-[node name="ConstructionBlueprintSystemNode" type="Node" parent="." unique_id=2020011003]
-script = ExtResource("13_blueprint")
-CoreSourcePath = NodePath("..")
-ItemSystemPath = NodePath("../ItemSystemNode")
-TimeSourcePath = NodePath("../SimulationTimeNode")
-
-[node name="ContextActionMenuUI" type="Node" parent="." unique_id=2020011002]
-script = ExtResource("7_menu")
-EventBusSourcePath = NodePath("..")
-
-[node name="BuildingPlannerUI" type="Node" parent="." unique_id=2020011004]
-script = ExtResource("14_planner")
-EventBusSourcePath = NodePath("..")
+[node name="TestVillagerRuntime" parent="." unique_id=1230698981 instance=ExtResource("6_runtime")]
 
 [node name="ControlTestVillager" type="Node2D" parent="." unique_id=2040090119 node_paths=PackedStringArray("Visualizer", "CanvasRenderer")]
 script = ExtResource("4_ne40w")
 Visualizer = NodePath("../TerrainVisualizer2D")
 CanvasRenderer = NodePath("../VillagerCanvasRenderer")
 CoreSourcePath = NodePath("..")
-ItemSystemPath = NodePath("../ItemSystemNode")
-BlueprintSystemPath = NodePath("../ConstructionBlueprintSystemNode")
-PlannerUiPath = NodePath("../BuildingPlannerUI")
-
-[node name="SimulationTimeNode" type="Node" parent="." unique_id=989077279]
-script = ExtResource("8_u68w1")
-Day = 0
-Hour = 0
-metadata/_custom_type_script = "uid://dknt628gh85re"
-
-[node name="BioSystemNode" type="Node" parent="." unique_id=1537732906 node_paths=PackedStringArray("TimeSource")]
-script = ExtResource("9_g8rjk")
-TimeSource = NodePath("../SimulationTimeNode")
-metadata/_custom_type_script = "uid://bn4ay11d1v1s6"
-
-[node name="VillagerBioDebugNode" type="Node" parent="." unique_id=324509472]
-script = ExtResource("10_1d0lr")
-metadata/_custom_type_script = "uid://b5rrxb6rj8svj"
-
-[node name="WeatherSimulationNode" type="Node" parent="." unique_id=324509473]
-script = ExtResource("11_weather")
-CoreSourcePath = NodePath("..")
-TimeSourcePath = NodePath("../SimulationTimeNode")
-
-[node name="WeatherEffectOnItemNode" type="Node" parent="." unique_id=324509474]
-script = ExtResource("12_weather_item")
-CoreSourcePath = NodePath("..")
-ItemSystemPath = NodePath("../ItemSystemNode")
+ItemSystemPath = NodePath("../TestVillagerRuntime/ItemSystemNode")
+BlueprintSystemPath = NodePath("../TestVillagerRuntime/ConstructionBlueprintSystemNode")
+PlannerUiPath = NodePath("../TestVillagerRuntime/BuildingPlannerUI")
+DesignationSystemPath = NodePath("../TestVillagerRuntime/CommandDesignationNode")
+StockpilePath = NodePath("../TestVillagerRuntime/PlayerStockpileNode")

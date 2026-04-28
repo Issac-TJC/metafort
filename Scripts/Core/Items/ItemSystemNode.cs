@@ -124,8 +124,14 @@ namespace MetaFort.Core.Items
             _inventories[actorEntityId] = new Dictionary<string, int>
             {
                 ["res_wood"] = 20,
+                ["res_stone"] = 20,
+                ["res_metal"] = 20,
+                ["res_coal"] = 12,
                 ["build_ladder_wood"] = 0,
-                ["debug_bell"] = 0
+                ["debug_bell"] = 0,
+                ["build_blast_furnace"] = 0,
+                ["build_generator"] = 0,
+                ["build_refinery"] = 0
             };
 
             if (_entityManager != null && _entityManager.IsAlive(actorEntityId) && !_entityManager.HasComponent<InventoryTagComponent>(actorEntityId))
@@ -278,6 +284,24 @@ namespace MetaFort.Core.Items
                 return false;
             }
 
+            return TryPlaceConstructedItem(actorEntityId, itemId, anchor, out message);
+        }
+
+        public bool TryPlaceConstructedItem(uint actorEntityId, string itemId, GridPosition anchor, out string message)
+        {
+            message = string.Empty;
+            if (!ItemConfigManager.TryGetItem(itemId, out ItemDefinition def))
+            {
+                message = "Unknown build item.";
+                return false;
+            }
+
+            if (!CanPlaceItemDefinition(itemId, anchor))
+            {
+                message = "Build location is no longer valid.";
+                return false;
+            }
+
             PlaceItemRecord(actorEntityId, itemId, anchor, def);
             message = $"Built {def.displayName}.";
             return true;
@@ -374,6 +398,43 @@ namespace MetaFort.Core.Items
         public bool TryGetPlacedItemRecord(GridPosition anchor, out PlacedItemRecord record)
         {
             return _placedAnchors.TryGetValue(anchor, out record);
+        }
+
+        public bool TryGetPlacedItemAnchor(GridPosition at, out GridPosition anchor)
+        {
+            return _occupiedToAnchor.TryGetValue(at, out anchor);
+        }
+
+        public bool TryRemovePlacedItem(GridPosition at, uint removedByActorId, out string itemId)
+        {
+            itemId = string.Empty;
+            if (!TryGetPlacedRecord(at, out GridPosition anchor, out PlacedItemRecord record))
+            {
+                return false;
+            }
+
+            itemId = record.ItemId;
+            if (!ItemConfigManager.TryGetItem(record.ItemId, out ItemDefinition definition))
+            {
+                return false;
+            }
+
+            List<GridPosition> occupiedCells = GetOccupiedCells(anchor, definition);
+            for (int i = 0; i < occupiedCells.Count; i++)
+            {
+                _occupiedToAnchor.Remove(occupiedCells[i]);
+            }
+
+            _placedAnchors.Remove(anchor);
+
+            var evt = new PlacedItemRemovedEvent
+            {
+                ItemId = record.ItemId,
+                Anchor = anchor,
+                RemovedByActorId = removedByActorId
+            };
+            _eventBus.Publish(ref evt);
+            return true;
         }
 
         public bool SetItemEnvironmentalProtection(GridPosition anchor, ItemEnvironmentalProtection protection)
@@ -869,6 +930,18 @@ namespace MetaFort.Core.Items
             }
 
             GD.Print($"[ItemSystem] Placed item '{itemId}' at anchor {anchor}, occupying {occupiedCells.Count} cells.");
+
+            if (_eventBus != null)
+            {
+                var evt = new PlacedItemAddedEvent
+                {
+                    ItemId = itemId,
+                    Anchor = anchor,
+                    OwnerEntityId = actorEntityId,
+                    IsBroken = false
+                };
+                _eventBus.Publish(ref evt);
+            }
         }
     }
 }

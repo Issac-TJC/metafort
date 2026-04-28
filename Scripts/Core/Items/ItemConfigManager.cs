@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Text.Json;
+using MetaFort.Core.Heat;
 
 namespace MetaFort.Core.Items
 {
@@ -86,6 +87,14 @@ namespace MetaFort.Core.Items
                 .ThenBy(item => item.ResolvePlannerLabel());
         }
 
+        public static IEnumerable<ItemDefinition> GetStockpileItems()
+        {
+            return ItemDefinitions.Values
+                .Where(item => item.showInStockpile)
+                .OrderBy(item => item.stockpileOrder)
+                .ThenBy(item => item.ResolveStockpileLabel());
+        }
+
         private static bool TryValidateItem(ItemDefinition item, out string error)
         {
             error = string.Empty;
@@ -133,6 +142,18 @@ namespace MetaFort.Core.Items
             if (item.occupiedOffsets == null)
             {
                 item.occupiedOffsets = new List<OccupiedCellOffset>();
+            }
+
+            if (item.heatTags == null)
+            {
+                item.heatTags = new List<string>();
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.thermalProfileId)
+                && !ThermalConfigManager.TryGetProfile(item.thermalProfileId, out _))
+            {
+                error = $"Item '{item.id}' references missing thermalProfileId '{item.thermalProfileId}'.";
+                return false;
             }
 
             return true;

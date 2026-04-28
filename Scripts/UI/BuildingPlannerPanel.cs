@@ -36,12 +36,21 @@ namespace MetaFort.UI
         public override void _Ready()
         {
             ResolveEventBus();
+            SubscribeEvents();
             BuildCatalog();
             BuildUi();
             RefreshCategoryButtons();
             RefreshItemButtons();
             SetExpanded(false);
             UpdateModeLabel();
+        }
+
+        public override void _ExitTree()
+        {
+            if (_eventBus != null)
+            {
+                _eventBus.Unsubscribe<MapCursorModeChangedEvent>(OnCursorModeChanged);
+            }
         }
 
         public void SetPlacementState(bool isActive, string itemId)
@@ -112,11 +121,10 @@ namespace MetaFort.UI
             _cancelButton = new Button { Text = "Cancel Placement", Visible = false };
             _cancelButton.Pressed += () =>
             {
-                _placementActive = false;
-                _activeItemId = string.Empty;
-                UpdateModeLabel();
-                RefreshItemButtons();
-                PublishPlacementCancelled();
+                PublishCursorModeRequest(new MapCursorModeState
+                {
+                    Kind = MapCursorModeKind.None
+                });
             };
             _stack.AddChild(_cancelButton);
         }
@@ -192,12 +200,13 @@ namespace MetaFort.UI
                 };
                 button.Pressed += () =>
                 {
-                    _activeItemId = itemId;
-                    _placementActive = true;
                     SetExpanded(false);
-                    UpdateModeLabel();
-                    RefreshItemButtons();
-                    PublishItemSelected(itemId);
+                    PublishCursorModeRequest(new MapCursorModeState
+                    {
+                        Kind = MapCursorModeKind.BuildBlueprint,
+                        ItemId = itemId,
+                        DisplayLabel = item.ResolvePlannerLabel()
+                    });
                 };
                 _itemList.AddChild(button);
             }
@@ -223,28 +232,32 @@ namespace MetaFort.UI
             }
         }
 
-        private void PublishItemSelected(string itemId)
+        private void SubscribeEvents()
         {
             if (_eventBus == null)
             {
-                GD.PrintErr("[BuildingPlannerPanel] EventBus is missing. Build planner selection was not published.");
                 return;
             }
 
-            var evt = new BuildPlannerItemSelectedEvent { ItemId = itemId };
+            _eventBus.Subscribe<MapCursorModeChangedEvent>(OnCursorModeChanged);
+        }
+
+        private void PublishCursorModeRequest(MapCursorModeState mode)
+        {
+            if (_eventBus == null)
+            {
+                GD.PrintErr("[BuildingPlannerPanel] EventBus is missing. Cursor mode request was not published.");
+                return;
+            }
+
+            var evt = new MapCursorModeRequestEvent { Mode = mode };
             _eventBus.Publish(ref evt);
         }
 
-        private void PublishPlacementCancelled()
+        private void OnCursorModeChanged(ref MapCursorModeChangedEvent evt)
         {
-            if (_eventBus == null)
-            {
-                GD.PrintErr("[BuildingPlannerPanel] EventBus is missing. Placement cancel was not published.");
-                return;
-            }
-
-            var evt = new BuildPlannerPlacementCancelledEvent();
-            _eventBus.Publish(ref evt);
+            bool isBuildMode = evt.Mode.Kind == MapCursorModeKind.BuildBlueprint;
+            SetPlacementState(isBuildMode, isBuildMode ? evt.Mode.ItemId : string.Empty);
         }
     }
 }

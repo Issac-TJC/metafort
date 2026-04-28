@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using System;
 using MetaFort.Core.Data;
 
@@ -10,9 +10,9 @@ namespace MetaFort.UI
         public static int CurrentSubSlot = 1;
         public static bool IsNewGame = true;
         public static int Seed = 0;
-        public static int MapWidth = 275;
-        public static int MapHeight = 275;
-        public static int MapDepth = 30;
+        public static int MapWidth = 0;
+        public static int MapHeight = 0;
+        public static int MapDepth = 0;
     }
 
     public partial class MainMenu : Control
@@ -25,7 +25,7 @@ namespace MetaFort.UI
             bg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
             AddChild(bg);
 
-            // 使用 CenterContainer 完全接管子元素的居中排版，彻底解决硬代码锚点(Anchor)计算滞后导致的向右下偏移
+            // 浣跨敤 CenterContainer 瀹屽叏鎺ョ瀛愬厓绱犵殑灞呬腑鎺掔増锛屽交搴曡В鍐崇‖浠ｇ爜閿氱偣(Anchor)璁＄畻婊炲悗瀵艰嚧鐨勫悜鍙充笅鍋忕Щ
             CenterContainer centerWrap = new CenterContainer();
             centerWrap.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
             AddChild(centerWrap);
@@ -42,7 +42,7 @@ namespace MetaFort.UI
 
             Label title = new Label 
             { 
-                Text = "MetaFort 极速 ECS 沙盒\n多重子存档系统主菜单 (平行宇宙与时间锚点)", 
+                Text = "MetaFort 鏋侀€?ECS 娌欑洅\n澶氶噸瀛愬瓨妗ｇ郴缁熶富鑿滃崟 (骞宠瀹囧畽涓庢椂闂撮敋鐐?", 
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             title.AddThemeFontSizeOverride("font_size", 28);
@@ -58,7 +58,7 @@ namespace MetaFort.UI
                 HBoxContainer row = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
                 
                 Button playBtn = new Button { 
-                    Text = exists ? $"展开主宇宙记录 {slot} 的所有时间分支点" : $"🌍 创立新宇宙：提取真随机种子生成 (空宇宙 {slot})", 
+                    Text = exists ? $"灞曞紑涓诲畤瀹欒褰?{slot} 鐨勬墍鏈夋椂闂村垎鏀偣" : $"馃實 鍒涚珛鏂板畤瀹欙細鎻愬彇鐪熼殢鏈虹瀛愮敓鎴?(绌哄畤瀹?{slot})", 
                     SizeFlagsHorizontal = SizeFlags.ExpandFill,
                     CustomMinimumSize = new Vector2(0, 60)
                 };
@@ -68,7 +68,7 @@ namespace MetaFort.UI
                 };
 
                 Button delBtn = new Button { 
-                    Text = "抹除整个宇宙架构", 
+                    Text = "鎶归櫎鏁翠釜瀹囧畽鏋舵瀯", 
                     Disabled = !exists,
                     CustomMinimumSize = new Vector2(160, 60)
                 };
@@ -87,23 +87,23 @@ namespace MetaFort.UI
 
             Label title = new Label 
             { 
-                Text = $"目前正探查主宇宙档案： {slot}", 
+                Text = $"鐩墠姝ｆ帰鏌ヤ富瀹囧畽妗ｆ锛?{slot}", 
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             title.AddThemeFontSizeOverride("font_size", 24);
             _rootLayout.AddChild(title);
             _rootLayout.AddChild(new HSeparator { CustomMinimumSize = new Vector2(0, 20) });
 
-            // 分层检查：0 号定格为灾难恢复级自动存档， 1-9 为深层主动操作的备份锚点
+            // 鍒嗗眰妫€鏌ワ細0 鍙峰畾鏍间负鐏鹃毦鎭㈠绾ц嚜鍔ㄥ瓨妗ｏ紝 1-9 涓烘繁灞備富鍔ㄦ搷浣滅殑澶囦唤閿氱偣
             for (int sub = 0; sub <= 9; sub++)
             {
                 if (SaveManager.SaveExists(slot, sub))
                 {
                     int localSub = sub; // Capture lambda variable locally!
                     
-                    string prefix = sub == 0 ? "[0] 💡 自动防灾存档点 (AutoSave)" : $"[{sub}] ⏳ 手动物理追溯锚点 (Manual Save {sub})";
+                    string prefix = sub == 0 ? "[0] 馃挕 鑷姩闃茬伨瀛樻。鐐?(AutoSave)" : $"[{sub}] 鈴?鎵嬪姩鐗╃悊杩芥函閿氱偣 (Manual Save {sub})";
                     Button subBtn = new Button { 
-                        Text = $"进入记忆 => {prefix}",
+                        Text = $"杩涘叆璁板繂 => {prefix}",
                         CustomMinimumSize = new Vector2(0, 50)
                     };
                     subBtn.Pressed += () => LoadGame(slot, localSub);
@@ -115,7 +115,7 @@ namespace MetaFort.UI
 
             _rootLayout.AddChild(new HSeparator { CustomMinimumSize = new Vector2(0, 20) });
             
-            Button backBtn = new Button { Text = "返回脱离本宇宙层级", CustomMinimumSize = new Vector2(0, 50) };
+            Button backBtn = new Button { Text = "返回主宇宙列表", CustomMinimumSize = new Vector2(0, 50) };
             backBtn.Pressed += () => RenderMainSlots();
             _rootLayout.AddChild(backBtn);
         }
@@ -128,9 +128,12 @@ namespace MetaFort.UI
         private void CreateNewGame(int slot)
         {
             GameSession.CurrentSlot = slot;
-            GameSession.CurrentSubSlot = 1; // 新游戏起始主时间锚必定设定为分支 1
+            GameSession.CurrentSubSlot = 1; // 鏂版父鎴忚捣濮嬩富鏃堕棿閿氬繀瀹氳瀹氫负鍒嗘敮 1
             GameSession.IsNewGame = true;
             GameSession.Seed = new Random().Next();
+            GameSession.MapWidth = 0;
+            GameSession.MapHeight = 0;
+            GameSession.MapDepth = 0;
             GetTree().ChangeSceneToFile("res://scenes/main/MainGame.tscn");
         }
 
