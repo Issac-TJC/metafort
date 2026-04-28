@@ -17,7 +17,11 @@ namespace MetaFort.Core.EventBus.Events
         Craft,
         Place,
         Use,
-        BuildBlueprint
+        BuildBlueprint,
+        DigDesignationWork,
+        DemolishDesignationWork,
+        CancelDigDesignation,
+        CancelDemolishDesignation
     }
 
     public enum ConstructionBlueprintStatus
@@ -52,6 +56,9 @@ namespace MetaFort.Core.EventBus.Events
         public string Label;
         public string ItemId;
         public Vector3I Target;
+        public Vector3I ResolvedTarget;
+        public string PayloadId;
+        public DigTargetKind DigTargetKind;
     }
 
     public struct ContextActionMenuRequestEvent : IGameEvent

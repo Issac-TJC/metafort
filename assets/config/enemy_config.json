@@ -1,0 +1,133 @@
+{
+  "enemyArchetypes": [
+    {
+      "id": "bug_grunt",
+      "displayName": "Burrow Grunt",
+      "roleType": "Grunt",
+      "maxHp": 20.0,
+      "moveSpeed": 2.8,
+      "attackDamage": 6.0,
+      "attackRange": 1.0,
+      "scentSensitivityHeat": 1.0,
+      "scentSensitivityExhaust": 0.55,
+      "visionRange": 8.0,
+      "hearingRange": 4.0,
+      "aggroThreshold": 5.0,
+      "disengageThreshold": 2.0,
+      "preferredTargets": [ "villager", "building" ],
+      "stateProfileId": "default_melee",
+      "scentProfileId": "heat_hunter",
+      "actionProfileId": "melee_attack"
+    },
+    {
+      "id": "bug_bomber",
+      "displayName": "Cinder Bomber",
+      "roleType": "Bomber",
+      "maxHp": 14.0,
+      "moveSpeed": 3.2,
+      "attackDamage": 4.0,
+      "attackRange": 1.0,
+      "scentSensitivityHeat": 1.2,
+      "scentSensitivityExhaust": 0.8,
+      "visionRange": 9.0,
+      "hearingRange": 5.0,
+      "aggroThreshold": 6.5,
+      "disengageThreshold": 2.5,
+      "selfDestructRadius": 2.5,
+      "selfDestructDamage": 18.0,
+      "preferredTargets": [ "building", "stockpile" ],
+      "stateProfileId": "default_bomber",
+      "scentProfileId": "heat_hunter",
+      "actionProfileId": "self_destruct"
+    },
+    {
+      "id": "bug_hauler",
+      "displayName": "Ash Hauler",
+      "roleType": "Hauler",
+      "maxHp": 18.0,
+      "moveSpeed": 3.4,
+      "attackDamage": 2.0,
+      "attackRange": 1.0,
+      "scentSensitivityHeat": 0.85,
+      "scentSensitivityExhaust": 1.15,
+      "visionRange": 7.0,
+      "hearingRange": 4.0,
+      "aggroThreshold": 4.5,
+      "disengageThreshold": 1.5,
+      "lootCapacity": 12,
+      "stealPerTrip": 4,
+      "preferredTargets": [ "stockpile", "building" ],
+      "stateProfileId": "default_hauler",
+      "scentProfileId": "exhaust_scavenger",
+      "actionProfileId": "resource_raid"
+    }
+  ],
+  "enemyStateProfiles": [
+    {
+      "id": "default_melee",
+      "investigateDuration": 2.0,
+      "attackCooldown": 1.25,
+      "selfDestructWindup": 0.0,
+      "escapeDuration": 0.0
+    },
+    {
+      "id": "default_bomber",
+      "investigateDuration": 1.2,
+      "attackCooldown": 0.75,
+      "selfDestructWindup": 1.0,
+      "escapeDuration": 0.0
+    },
+    {
+      "id": "default_hauler",
+      "investigateDuration": 1.8,
+      "attackCooldown": 0.0,
+      "selfDestructWindup": 0.0,
+      "escapeDuration": 5.0
+    }
+  ],
+  "enemyScentProfiles": [
+    {
+      "id": "heat_hunter",
+      "heatWeight": 1.0,
+      "exhaustWeight": 0.45,
+      "aggroThreshold": 5.0,
+      "disengageThreshold": 2.0
+    },
+    {
+      "id": "exhaust_scavenger",
+      "heatWeight": 0.6,
+      "exhaustWeight": 1.1,
+      "aggroThreshold": 4.0,
+      "disengageThreshold": 1.5
+    }
+  ],
+  "enemyActionProfiles": [
+    {
+      "id": "melee_attack",
+      "attackRange": 1.0,
+      "attackDamage": 6.0,
+      "selfDestructRadius": 0.0,
+      "selfDestructDamage": 0.0,
+      "lootCapacity": 0,
+      "stealPerTrip": 0
+    },
+    {
+      "id": "self_destruct",
+      "attackRange": 1.0,
+      "attackDamage": 4.0,
+      "selfDestructRadius": 2.5,
+      "selfDestructDamage": 18.0,
+      "lootCapacity": 0,
+      "stealPerTrip": 0
+    },
+    {
+      "id": "resource_raid",
+      "attackRange": 1.0,
+      "attackDamage": 2.0,
+      "selfDestructRadius": 0.0,
+      "selfDestructDamage": 0.0,
+      "lootCapacity": 12,
+      "stealPerTrip": 4
+    }
+  ]
+}

@@ -9,15 +9,15 @@
 	  "oreThresholdCoal": -0.6
 	},
 	"types": [
-	  { "id": 0, "name": "Air", "health": 0 },
-	  { "id": 1, "name": "Bedrock", "health": 255, "terrain": 0 },
-	  { "id": 2, "name": "Stone", "health": 100, "terrain": 1 },
-	  { "id": 3, "name": "Dirt", "health": 30, "terrain": 2 },
-	  { "id": 4, "name": "Grass", "health": 20, "terrain": 3 },
-	  { "id": 5, "name": "Sand", "health": 20, "terrain": 4 },
-	  { "id": 6, "name": "Water", "health": 0, "terrain": 5 },
-	  { "id": 7, "name": "Coal", "health": 80, "terrain": 6 },
-	  { "id": 8, "name": "Iron", "health": 200, "terrain": 7 }
+	  { "id": 0, "name": "Air", "health": 0, "canDig": false },
+	  { "id": 1, "name": "Bedrock", "health": 255, "terrain": 0, "canDig": false },
+	  { "id": 2, "name": "Stone", "health": 100, "terrain": 1, "primaryDropItemId": "res_stone", "primaryDropCount": 1 },
+	  { "id": 3, "name": "Dirt", "health": 30, "terrain": 2, "primaryDropItemId": "res_dirt", "primaryDropCount": 1 },
+	  { "id": 4, "name": "Grass", "health": 20, "terrain": 3, "primaryDropItemId": "res_dirt", "primaryDropCount": 1, "secondaryDropItemId": "res_grass_seed", "secondaryDropCount": 1 },
+	  { "id": 5, "name": "Sand", "health": 20, "terrain": 4, "primaryDropItemId": "res_sand", "primaryDropCount": 1 },
+	  { "id": 6, "name": "Water", "health": 0, "terrain": 5, "primaryDropItemId": "res_water", "primaryDropCount": 1 },
+	  { "id": 7, "name": "Coal", "health": 80, "terrain": 6, "primaryDropItemId": "res_coal", "primaryDropCount": 1 },
+	  { "id": 8, "name": "Iron", "health": 200, "terrain": 7, "primaryDropItemId": "res_metal", "primaryDropCount": 1 }
 	]
   }
 }

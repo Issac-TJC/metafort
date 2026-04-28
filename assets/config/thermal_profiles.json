@@ -1,0 +1,46 @@
+{
+  "thermalProfiles": [
+    {
+      "id": "blast_furnace",
+      "displayName": "Blast Furnace",
+      "baseHeatOutput": 18.0,
+      "baseExhaustOutput": 10.0,
+      "heatEmissionRadiusXY": 5,
+      "heatEmissionRiseZ": 4,
+      "heatEmissionDownZ": 1,
+      "heatEmissionFalloff": 1.15,
+      "upwardBias": 1.5,
+      "downwardMultiplier": 0.25,
+      "emitsWhenBroken": false,
+      "heatTags": [ "industrial", "combustion", "smelter" ]
+    },
+    {
+      "id": "generator",
+      "displayName": "Generator",
+      "baseHeatOutput": 14.0,
+      "baseExhaustOutput": 8.0,
+      "heatEmissionRadiusXY": 4,
+      "heatEmissionRiseZ": 3,
+      "heatEmissionDownZ": 1,
+      "heatEmissionFalloff": 1.25,
+      "upwardBias": 1.35,
+      "downwardMultiplier": 0.3,
+      "emitsWhenBroken": false,
+      "heatTags": [ "industrial", "generator", "power" ]
+    },
+    {
+      "id": "refinery",
+      "displayName": "Refinery",
+      "baseHeatOutput": 22.0,
+      "baseExhaustOutput": 14.0,
+      "heatEmissionRadiusXY": 6,
+      "heatEmissionRiseZ": 5,
+      "heatEmissionDownZ": 1,
+      "heatEmissionFalloff": 1.05,
+      "upwardBias": 1.65,
+      "downwardMultiplier": 0.2,
+      "emitsWhenBroken": true,
+      "heatTags": [ "industrial", "refinery", "toxic" ]
+    }
+  ]
+}

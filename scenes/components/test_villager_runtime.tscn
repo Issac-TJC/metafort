@@ -1,0 +1,88 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" uid="uid://bmjegd3oowstq" path="res://Scripts/Core/Items/ItemSystemNode.cs" id="1_item"]
+[ext_resource type="Script" uid="uid://cph6arehqall4" path="res://Scripts/Core/Systems/PlayerStockpileNode.cs" id="2_stockpile"]
+[ext_resource type="Script" uid="uid://cnwjw5bb1rir8" path="res://Scripts/Core/Items/ConstructionBlueprintSystemNode.cs" id="3_blueprint"]
+[ext_resource type="Script" uid="uid://b02p511v0shxl" path="res://Scripts/Core/Systems/CommandDesignationNode.cs" id="4_designation"]
+[ext_resource type="Script" uid="uid://by2x6vwxigooy" path="res://Scripts/Core/Systems/VillagerWorkNode.cs" id="5_work"]
+[ext_resource type="Script" uid="uid://dknt628gh85re" path="res://Scripts/Core/Systems/SimulationTimeNode.cs" id="6_time"]
+[ext_resource type="Script" uid="uid://bn4ay11d1v1s6" path="res://Scripts/Core/Systems/BioSystemNode.cs" id="7_bio"]
+[ext_resource type="Script" uid="uid://b5rrxb6rj8svj" path="res://Scripts/Test_Control/VillagerBioDebugNode.cs" id="8_bio_debug"]
+[ext_resource type="Script" uid="uid://be0aolbofxnvb" path="res://Scripts/Core/Systems/WeatherSimulationNode.cs" id="9_weather"]
+[ext_resource type="Script" uid="uid://5so13oc17ooj" path="res://Scripts/Core/Systems/WeatherEffectOnItemNode.cs" id="10_weather_item"]
+[ext_resource type="Script" uid="uid://bu5wv4qn4ciyw" path="res://Scripts/UI/ContextActionMenuUI.cs" id="11_menu"]
+[ext_resource type="Script" uid="uid://b6k048r3pcxtw" path="res://Scripts/UI/StockpileHudPanel.cs" id="12_stockpile_hud"]
+[ext_resource type="Script" uid="uid://caytoyy2ano5m" path="res://Scripts/UI/CommandPalettePanel.cs" id="13_command_palette"]
+[ext_resource type="Script" uid="uid://dtma4nyu0oxau" path="res://Scripts/UI/BuildingPlannerPanel.cs" id="14_planner"]
+
+[node name="TestVillagerRuntime" type="Node"]
+
+[node name="ItemSystemNode" type="Node" parent="."]
+script = ExtResource("1_item")
+CoreSourcePath = NodePath("../..")
+
+[node name="PlayerStockpileNode" type="Node" parent="."]
+script = ExtResource("2_stockpile")
+CoreSourcePath = NodePath("../..")
+
+[node name="ConstructionBlueprintSystemNode" type="Node" parent="."]
+script = ExtResource("3_blueprint")
+CoreSourcePath = NodePath("../..")
+ItemSystemPath = NodePath("../ItemSystemNode")
+TimeSourcePath = NodePath("../SimulationTimeNode")
+
+[node name="CommandDesignationNode" type="Node" parent="."]
+script = ExtResource("4_designation")
+CoreSourcePath = NodePath("../..")
+ItemSystemPath = NodePath("../ItemSystemNode")
+
+[node name="VillagerWorkNode" type="Node" parent="."]
+script = ExtResource("5_work")
+CoreSourcePath = NodePath("../..")
+TimeSourcePath = NodePath("../SimulationTimeNode")
+ItemSystemPath = NodePath("../ItemSystemNode")
+BlueprintSystemPath = NodePath("../ConstructionBlueprintSystemNode")
+StockpilePath = NodePath("../PlayerStockpileNode")
+DesignationPath = NodePath("../CommandDesignationNode")
+
+[node name="ContextActionMenuUI" type="Node" parent="."]
+script = ExtResource("11_menu")
+EventBusSourcePath = NodePath("../..")
+
+[node name="StockpileHudPanel" type="Node" parent="."]
+script = ExtResource("12_stockpile_hud")
+EventBusSourcePath = NodePath("../..")
+StockpileSourcePath = NodePath("../PlayerStockpileNode")
+
+[node name="CommandPalettePanel" type="Node" parent="."]
+script = ExtResource("13_command_palette")
+EventBusSourcePath = NodePath("../..")
+
+[node name="BuildingPlannerUI" type="Node" parent="."]
+script = ExtResource("14_planner")
+EventBusSourcePath = NodePath("../..")
+
+[node name="SimulationTimeNode" type="Node" parent="."]
+script = ExtResource("6_time")
+Day = 0
+Hour = 0
+metadata/_custom_type_script = "uid://dknt628gh85re"
+
+[node name="BioSystemNode" type="Node" parent="." node_paths=PackedStringArray("TimeSource")]
+script = ExtResource("7_bio")
+TimeSource = NodePath("../SimulationTimeNode")
+metadata/_custom_type_script = "uid://bn4ay11d1v1s6"
+
+[node name="VillagerBioDebugNode" type="Node" parent="."]
+script = ExtResource("8_bio_debug")
+metadata/_custom_type_script = "uid://b5rrxb6rj8svj"
+
+[node name="WeatherSimulationNode" type="Node" parent="."]
+script = ExtResource("9_weather")
+CoreSourcePath = NodePath("../..")
+TimeSourcePath = NodePath("../SimulationTimeNode")
+
+[node name="WeatherEffectOnItemNode" type="Node" parent="."]
+script = ExtResource("10_weather_item")
+CoreSourcePath = NodePath("../..")
+ItemSystemPath = NodePath("../ItemSystemNode")

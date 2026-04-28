@@ -2,15 +2,27 @@ using Godot;
 using System.Collections.Generic;
 using MetaFort.Core.EventBus;
 using MetaFort.Core.Spatial;
+using MetaFort.Core.Systems;
 using TileData = MetaFort.Core.Spatial.TileData;
 
 namespace MetaFort.Core.ECS
 {
     public partial class FluidSimulationSystem : Node, ISystem
     {
+        [Export]
+        public NodePath TimeSourcePath { get; set; } = "../SimulationTimeNode";
+
+        private SimulationTimeNode _timeSource;
+
         public override void _Process(double delta)
         {
-            Update(delta);
+            if (_timeSource == null && TimeSourcePath != null && !TimeSourcePath.IsEmpty)
+            {
+                _timeSource = GetNodeOrNull<SimulationTimeNode>(TimeSourcePath);
+            }
+
+            double scaledDelta = _timeSource != null ? _timeSource.ScaledDeltaTime : delta;
+            Update(scaledDelta);
         }
 
         private MapManager _map;

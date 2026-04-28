@@ -1,3 +1,30 @@
-# Godot 4+ specific ignores
+# Godot generated/cache folders
 .godot/
 /android/
+bin/
+obj/
+
+# Local editor/user state
+.vscode/
+*.user
+*.suo
+
+# Codex/agent and planning documentation kept local only
+.agents/
+.codex/
+AGENTS.md
+design/
+docs/
+production/
+prototypes/
+reviews/
+tests/
+tools/
+
+# Local MCP/client config
+.cursor/mcp.json
+.vscode/mcp.json
+
+# Local MCP source/tooling if accidentally copied here
+godot-mcp-main/
+node_modules/
